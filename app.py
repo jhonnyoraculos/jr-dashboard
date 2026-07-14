@@ -2726,6 +2726,8 @@ def data_frota(params: dict | None = None) -> dict:
 
     total_km = sum(row["km_total"] for row in ranking)
     total_litros = sum(row["litros_total"] for row in ranking)
+    total_gasto = sum(row["total"] for row in ranking)
+    total_placas = len(ranking)
 
     return {
         "anos": sorted(anos_disponiveis),
@@ -2740,8 +2742,9 @@ def data_frota(params: dict | None = None) -> dict:
         "km_mensal": mensal_km,
         "litros_mensal": mensal_litros,
         "totais": {
-            "placas": len(ranking),
-            "total": round(sum(row["total"] for row in ranking), 2),
+            "placas": total_placas,
+            "total": round(total_gasto, 2),
+            "media_gasto": round((total_gasto / total_placas) if total_placas else 0.0, 2),
             "combustivel": round(sum(row["combustivel"] for row in ranking), 2),
             "manutencao": round(sum(row["manutencao"] for row in ranking), 2),
             "pedagio": round(sum(row["pedagio"] for row in ranking), 2),

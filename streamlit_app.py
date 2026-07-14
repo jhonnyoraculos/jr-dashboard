@@ -794,6 +794,12 @@ def inject_css() -> None:
           gap: 28px;
         }}
 
+        @media (min-width: 1200px) {{
+          .st-key-frota_kpis .kpis {{
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+          }}
+        }}
+
         .kpi-sections {{
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4365,6 +4371,7 @@ def render_frota() -> None:
     kpi_items = [
         ("Placas no ranking", fmt_num(totais.get("placas")), JR_BLUE),
         ("Gasto total", fmt_brl_big(totais.get("total")), JR_RED),
+        ("Média de gasto/placa", fmt_brl_big(totais.get("media_gasto")), "#0F766E"),
         ("Manutenção", fmt_brl_big(totais.get("manutencao")), JR_RED),
         ("Pedágio/Extras", fmt_brl_big(totais.get("pedagio")), "#D97706"),
         ("Peso total", fmt_peso(totais.get("peso_total")), JR_BLUE),
@@ -4377,7 +4384,8 @@ def render_frota() -> None:
             ("Litros", fmt_num(totais.get("litros_total")), JR_BLUE),
             ("Média KM/L", f"{fmt_num(totais.get('km_por_litro'), 2)} km/L", JR_RED),
         ]
-    render_kpis(kpi_items)
+    with st.container(key="frota_kpis"):
+        render_kpis(kpi_items)
 
     ranking = data.get("ranking", []) or []
     if not ranking:
