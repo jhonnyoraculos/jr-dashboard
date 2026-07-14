@@ -5588,6 +5588,14 @@ def _sheet_export_frame(df: pd.DataFrame, columns: list[tuple[str, str]]) -> pd.
     return exported.reset_index(drop=True)
 
 
+def _sheet_export_month_options(df: pd.DataFrame) -> list[str]:
+    if df.empty or "Mes" not in df.columns:
+        return []
+    values = df["Mes"].astype("string").fillna("").str.strip()
+    months = [value for value in values.drop_duplicates().tolist() if parse_month_key(value)]
+    return sorted(months, key=lambda value: parse_month_key(value) or (0, 0), reverse=True)
+
+
 def _render_sheet_downloads(
     loader,
     columns: list[tuple[str, str]],
@@ -5606,14 +5614,32 @@ def _render_sheet_downloads(
         st.warning("Nao foi possivel carregar os dados cadastrados para exportacao.")
         st.caption(str(exc))
 
+    selected_month = None
+    month_options = _sheet_export_month_options(current_df)
+    if month_options:
+        current_month = date.today().strftime("%Y-%m")
+        default_index = month_options.index(current_month) if current_month in month_options else 0
+        selected_month = st.selectbox(
+            "Mes para exportar",
+            month_options,
+            index=default_index,
+            format_func=month_filter_label,
+            key=f"{key_prefix}_export_month",
+        )
+        month_values = current_df["Mes"].astype("string").fillna("").str.strip()
+        current_df = current_df.loc[month_values.eq(selected_month)].copy()
+    else:
+        st.caption("Nenhum mes cadastrado para exportar.")
+
     data_frame = _sheet_export_frame(current_df, columns)
     example_frame = pd.DataFrame([example], columns=[target for _, target in columns])
+    data_file_name = f"{file_prefix}_dados_{selected_month}.xlsx" if selected_month else f"{file_prefix}_dados.xlsx"
     download_columns = st.columns(2)
     with download_columns[0]:
         st.download_button(
             "Baixar planilha com dados",
             data=_sheet_xlsx_bytes(data_frame, sheet_name),
-            file_name=f"{file_prefix}_dados.xlsx",
+            file_name=data_file_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key=f"{key_prefix}_download_data",
             width="stretch",
@@ -5627,7 +5653,13 @@ def _render_sheet_downloads(
             key=f"{key_prefix}_download_example",
             width="stretch",
         )
-    st.caption(f"A planilha com dados contem {len(data_frame)} registro(s). Os dois arquivos usam o formato aceito abaixo.")
+    if selected_month:
+        st.caption(
+            f"A planilha com dados contem {len(data_frame)} registro(s) de {month_filter_label(selected_month)}. "
+            "Os dois arquivos usam o formato aceito abaixo."
+        )
+    else:
+        st.caption(f"A planilha com dados contem {len(data_frame)} registro(s). Os dois arquivos usam o formato aceito abaixo.")
 
 
 def _read_uploaded_sheet(uploaded_file, aliases: dict[str, list[str]]) -> pd.DataFrame:
