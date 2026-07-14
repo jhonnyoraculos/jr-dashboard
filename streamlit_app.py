@@ -5516,6 +5516,90 @@ PESO_SHEET_ALIASES = {
 }
 
 
+def _sheet_xlsx_bytes(df: pd.DataFrame, sheet_name: str) -> bytes:
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    export_df = df.copy()
+    for column in export_df.columns:
+        if _normalize_sheet_header(column) == "DATA":
+            parsed = pd.to_datetime(export_df[column], errors="coerce")
+            export_df[column] = parsed.map(lambda value: value.date() if pd.notna(value) else None)
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        export_df.to_excel(writer, sheet_name=sheet_name[:31], index=False)
+        worksheet = writer.sheets[sheet_name[:31]]
+        worksheet.freeze_panes = "A2"
+        worksheet.auto_filter.ref = worksheet.dimensions
+
+        header_fill = PatternFill("solid", fgColor="1C2D6B")
+        for cell in worksheet[1]:
+            cell.fill = header_fill
+            cell.font = Font(color="FFFFFF", bold=True)
+            cell.alignment = Alignment(horizontal="center")
+
+        for position, column in enumerate(export_df.columns, start=1):
+            if _normalize_sheet_header(column) == "DATA":
+                for row in worksheet.iter_rows(min_row=2, min_col=position, max_col=position):
+                    row[0].number_format = "DD/MM/YYYY"
+
+        for column_cells in worksheet.columns:
+            values = [str(cell.value) if cell.value is not None else "" for cell in column_cells]
+            width = min(max((len(value) for value in values), default=10) + 2, 42)
+            worksheet.column_dimensions[column_cells[0].column_letter].width = max(width, 12)
+
+    return output.getvalue()
+
+
+def _sheet_export_frame(df: pd.DataFrame, columns: list[tuple[str, str]]) -> pd.DataFrame:
+    exported = pd.DataFrame(index=df.index)
+    for source, target in columns:
+        exported[target] = df[source] if source in df.columns else None
+    return exported.reset_index(drop=True)
+
+
+def _render_sheet_downloads(
+    loader,
+    columns: list[tuple[str, str]],
+    example: dict[str, object],
+    *,
+    key_prefix: str,
+    file_prefix: str,
+    sheet_name: str,
+) -> None:
+    try:
+        current_df = loader()
+        if current_df is None:
+            current_df = pd.DataFrame()
+    except Exception as exc:
+        current_df = pd.DataFrame()
+        st.warning("Nao foi possivel carregar os dados cadastrados para exportacao.")
+        st.caption(str(exc))
+
+    data_frame = _sheet_export_frame(current_df, columns)
+    example_frame = pd.DataFrame([example], columns=[target for _, target in columns])
+    download_columns = st.columns(2)
+    with download_columns[0]:
+        st.download_button(
+            "Baixar planilha com dados",
+            data=_sheet_xlsx_bytes(data_frame, sheet_name),
+            file_name=f"{file_prefix}_dados.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"{key_prefix}_download_data",
+            width="stretch",
+        )
+    with download_columns[1]:
+        st.download_button(
+            "Baixar planilha de exemplo",
+            data=_sheet_xlsx_bytes(example_frame, sheet_name),
+            file_name=f"{file_prefix}_exemplo.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"{key_prefix}_download_example",
+            width="stretch",
+        )
+    st.caption(f"A planilha com dados contem {len(data_frame)} registro(s). Os dois arquivos usam o formato aceito abaixo.")
+
+
 def _read_uploaded_sheet(uploaded_file, aliases: dict[str, list[str]]) -> pd.DataFrame:
     name = clean_text(getattr(uploaded_file, "name", "")).lower()
     if name.endswith(".csv"):
@@ -5575,6 +5659,7 @@ def _detect_sheet_header(raw: pd.DataFrame, aliases: dict[str, list[str]]) -> pd
 def _pedagio_rows_from_sheet(df: pd.DataFrame, plate_map: dict[str, str]) -> tuple[list[dict], list[str]]:
     header_map = {_normalize_sheet_header(column): column for column in df.columns}
     aliases = {
+        "DATA": ["DATA", "DT"],
         "PLACA": ["PLACA", "PLACAS"],
         "TIPO": ["TIPO"],
         "CUSTO": ["CUSTO", "VALOR"],
@@ -5582,22 +5667,24 @@ def _pedagio_rows_from_sheet(df: pd.DataFrame, plate_map: dict[str, str]) -> tup
     }
     resolved = {field: next((header_map[key] for key in keys if key in header_map), None) for field, keys in aliases.items()}
     labels = {"PLACA": "PLACA", "TIPO": "TIPO", "CUSTO": "Custo", "MES": "MES"}
-    missing = [labels[field] for field, column in resolved.items() if column is None]
+    missing = [label for field, label in labels.items() if resolved.get(field) is None]
     if missing:
         return [], [f"Colunas faltando: {', '.join(missing)}."]
 
     rows: list[dict] = []
     errors: list[str] = []
+    optional_plate_types = {_normalize_sheet_header(value) for value in PEDAGIO_OPTIONAL_PLATE_TYPES}
     for idx, row in df.iterrows():
         placa = clean_text(row.get(resolved["PLACA"])).strip().upper()
         tipo = clean_text(row.get(resolved["TIPO"])).strip()
         custo = _parse_brl_number(row.get(resolved["CUSTO"]))
         mes_info = _parse_sheet_month(row.get(resolved["MES"]))
+        data_info = _parse_sheet_date(row.get(resolved.get("DATA"))) if resolved.get("DATA") else None
 
-        if not placa and not tipo and custo is None and mes_info is None:
+        if not placa and not tipo and custo is None and mes_info is None and data_info is None:
             continue
         missing_row = []
-        if not placa:
+        if not placa and _normalize_sheet_header(tipo) not in optional_plate_types:
             missing_row.append("PLACA")
         if not tipo:
             missing_row.append("TIPO")
@@ -5609,7 +5696,8 @@ def _pedagio_rows_from_sheet(df: pd.DataFrame, plate_map: dict[str, str]) -> tup
             errors.append(f"Linha {idx + 2}: preencher {', '.join(missing_row)}.")
             continue
 
-        mes, data = mes_info
+        mes, month_start = mes_info
+        data = data_info[0] if data_info else month_start
         rows.append(
             {
                 "Data": data,
@@ -5900,6 +5988,32 @@ def _render_hoteis_sheet_import() -> None:
                 st.rerun()
 
     with st.expander("Adicionar hoteis por planilha", expanded=False):
+        _render_sheet_downloads(
+            backend.load_hoteis,
+            [
+                ("Data", "DATA"),
+                ("Motorista", "MOTORISTA"),
+                ("Ajudante", "AJUDANTE"),
+                ("Cidade", "CIDADE"),
+                ("Valor", "VALOR"),
+                ("Hotel", "HOTEL/POUSADA"),
+                ("Dias", "DIAS"),
+                ("Tipo", "TIPO"),
+            ],
+            {
+                "DATA": date.today(),
+                "MOTORISTA": "MOTORISTA EXEMPLO",
+                "AJUDANTE": "AJUDANTE EXEMPLO",
+                "CIDADE": "SAO PAULO",
+                "VALOR": 250.0,
+                "HOTEL/POUSADA": "HOTEL EXEMPLO",
+                "DIAS": 1,
+                "TIPO": "Hospedagem",
+            },
+            key_prefix="cad_hotel_sheet",
+            file_prefix="hoteis",
+            sheet_name="Hoteis",
+        )
         uploaded = st.file_uploader("Enviar planilha", type=["xlsx", "csv"], key="cad_hotel_upload")
         if uploaded is None:
             return
@@ -5983,6 +6097,20 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
                 st.rerun()
 
     with st.expander("Adicionar peso por planilha", expanded=False):
+        _render_sheet_downloads(
+            backend.load_peso,
+            [("Data", "DATA"), ("Cidade", "CIDADE"), ("Peso", "PESO"), ("Valor", "VALOR"), ("PLACA", "PLACA")],
+            {
+                "DATA": date.today(),
+                "CIDADE": "SAO PAULO",
+                "PESO": 1250.5,
+                "VALOR": 180.0,
+                "PLACA": "ABC1D23",
+            },
+            key_prefix="cad_peso_sheet",
+            file_prefix="peso",
+            sheet_name="Peso",
+        )
         uploaded = st.file_uploader("Enviar planilha", type=["xlsx", "csv"], key="cad_peso_upload")
         if uploaded is None:
             return
@@ -6066,6 +6194,28 @@ def _render_combustivel_sheet_import(plate_map: dict[str, str]) -> None:
                 st.rerun()
 
     with st.expander("Adicionar combustivel por planilha", expanded=False):
+        _render_sheet_downloads(
+            backend.load_combustivel,
+            [
+                ("Data", "DATA"),
+                ("Litros", "LITROS"),
+                ("Custo", "CUSTO"),
+                ("Combustivel", "COMBUSTIVEL"),
+                ("POSTOS", "POSTOS"),
+                ("PLACA", "PLACA"),
+            ],
+            {
+                "DATA": date.today(),
+                "LITROS": 45.5,
+                "CUSTO": 270.0,
+                "COMBUSTIVEL": "DIESEL S10",
+                "POSTOS": "POSTO EXEMPLO",
+                "PLACA": "ABC1D23",
+            },
+            key_prefix="cad_comb_sheet",
+            file_prefix="combustivel",
+            sheet_name="Combustivel",
+        )
         uploaded = st.file_uploader("Enviar planilha", type=["xlsx", "csv"], key="cad_comb_upload")
         if uploaded is None:
             return
@@ -6236,6 +6386,14 @@ def _save_records_with_replace_in_batches(dataset: str, rows: list[dict], replac
 
 def _render_km_sheet_import() -> None:
     with st.expander("Adicionar KM mensal por planilha", expanded=False):
+        _render_sheet_downloads(
+            backend.load_combustivel_km,
+            [("PLACA", "PLACA"), ("Km Rodados", "KM"), ("Mes", "MES")],
+            {"PLACA": "ABC1D23", "KM": 2500.0, "MES": date.today().strftime("%Y-%m")},
+            key_prefix="cad_km_sheet",
+            file_prefix="km_mensal",
+            sheet_name="KM mensal",
+        )
         uploaded = st.file_uploader("Enviar planilha", type=["xlsx", "csv"], key="cad_km_upload")
         if uploaded is None:
             return
@@ -6293,6 +6451,20 @@ def _render_pedagio_sheet_import(plate_map: dict[str, str]) -> None:
                 st.rerun()
 
     with st.expander("Adicionar pedagio/extras por planilha", expanded=False):
+        _render_sheet_downloads(
+            backend.load_pedagio,
+            [("Data", "DATA"), ("PLACA", "PLACA"), ("Tipo", "TIPO"), ("Custo", "CUSTO"), ("Mes", "MES")],
+            {
+                "DATA": date.today(),
+                "PLACA": "ABC1D23",
+                "TIPO": "Pedagio",
+                "CUSTO": 35.9,
+                "MES": date.today().strftime("%Y-%m"),
+            },
+            key_prefix="cad_ped_sheet",
+            file_prefix="pedagio_extras",
+            sheet_name="Pedagio e extras",
+        )
         uploaded = st.file_uploader("Enviar planilha", type=["xlsx", "csv"], key="cad_ped_upload")
         if uploaded is None:
             return
