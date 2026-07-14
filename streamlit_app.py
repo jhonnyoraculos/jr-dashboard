@@ -1840,6 +1840,36 @@ def inject_css() -> None:
             inset 0 1px 0 rgba(255,255,255,.20) !important;
         }}
 
+        [class*="_sheet_download_data"] button {{
+          background:
+            linear-gradient(135deg, rgba(28,45,107,.98), rgba(28,45,107,.88)),
+            var(--jr-blue) !important;
+          color: #fff !important;
+          border-color: rgba(28,45,107,.82) !important;
+          box-shadow:
+            0 12px 28px rgba(28,45,107,.20),
+            inset 0 1px 0 rgba(255,255,255,.20) !important;
+        }}
+
+        [class*="_sheet_download_data"] button *,
+        [class*="_sheet_download_data"] button:hover * {{
+          color: #fff !important;
+        }}
+
+        [class*="_sheet_download_example"] button {{
+          background: rgba(255,255,255,.92) !important;
+          color: var(--jr-blue) !important;
+          border: 1.5px solid rgba(28,45,107,.34) !important;
+          box-shadow:
+            0 12px 28px rgba(16,24,40,.10),
+            inset 0 1px 0 rgba(255,255,255,.96) !important;
+        }}
+
+        [class*="_sheet_download_example"] button *,
+        [class*="_sheet_download_example"] button:hover * {{
+          color: var(--jr-blue) !important;
+        }}
+
         .stButton > button {{
           box-shadow:
             0 14px 30px rgba(190,30,45,.22),
