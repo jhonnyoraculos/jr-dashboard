@@ -4371,7 +4371,7 @@ def render_frota() -> None:
     kpi_items = [
         ("Placas no ranking", fmt_num(totais.get("placas")), JR_BLUE),
         ("Gasto total", fmt_brl_big(totais.get("total")), JR_RED),
-        ("Média de gasto/placa", fmt_brl_big(totais.get("media_gasto")), "#0F766E"),
+        ("Média mensal de gastos", fmt_brl_big(totais.get("media_mensal")), "#0F766E"),
         ("Manutenção", fmt_brl_big(totais.get("manutencao")), JR_RED),
         ("Pedágio/Extras", fmt_brl_big(totais.get("pedagio")), "#D97706"),
         ("Peso total", fmt_peso(totais.get("peso_total")), JR_BLUE),
