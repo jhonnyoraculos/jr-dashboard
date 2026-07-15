@@ -350,14 +350,29 @@ def inject_css() -> None:
           display: none !important;
         }}
 
+        .st-key-rank_filterbar .st-key-rank_incluir_hoteis {{
+          height: 38px;
+          display: flex;
+          align-items: stretch;
+        }}
+
+        .st-key-rank_filterbar .st-key-rank_incluir_hoteis [data-testid="stCheckbox"] {{
+          width: 100%;
+          height: 38px;
+          display: flex;
+          align-items: stretch;
+          margin: 0;
+        }}
+
         .st-key-rank_filterbar .st-key-rank_incluir_hoteis label {{
           display: inline-flex !important;
           width: 100%;
+          height: 38px;
           min-height: 38px;
           align-items: center;
           justify-content: center;
           gap: 8px;
-          padding: 6px 10px;
+          padding: 0 10px;
           border: 1px solid rgba(255,255,255,.25);
           border-radius: 8px;
           background: rgba(255,255,255,.96);
@@ -371,6 +386,8 @@ def inject_css() -> None:
           color: var(--jr-blue);
           font-size: 13px;
           font-weight: 800;
+          line-height: 1;
+          margin: 0;
         }}
 
         .st-key-comb_filterbar div[data-baseweb="select"] > div,
