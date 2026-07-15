@@ -354,6 +354,14 @@ def inject_css() -> None:
           height: 38px;
           display: flex;
           align-items: stretch;
+          margin-top: 0;
+          padding-top: 0;
+          transform: translateY(-8px);
+        }}
+
+        .st-key-rank_filterbar [data-testid="column"]:has(.st-key-rank_incluir_hoteis) {{
+          align-self: flex-start;
+          padding-top: 0 !important;
         }}
 
         .st-key-rank_filterbar .st-key-rank_incluir_hoteis [data-testid="stCheckbox"] {{
