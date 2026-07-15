@@ -6152,6 +6152,36 @@ def _undo_peso_last_import() -> None:
     st.rerun()
 
 
+def _render_peso_import_summary(preview: pd.DataFrame) -> None:
+    count = int(preview.shape[0])
+    peso_total = float(pd.to_numeric(preview.get("Peso"), errors="coerce").fillna(0).sum()) if "Peso" in preview.columns else 0.0
+    valor_total = float(pd.to_numeric(preview.get("Valor"), errors="coerce").fillna(0).sum()) if "Valor" in preview.columns else 0.0
+    cards = [
+        (
+            '<div class="table-counter-card table-counter-card--metric">'
+            "<span>Importando</span>"
+            f"<strong>{h(fmt_num(count))}</strong>"
+            "<span>entrega(s)</span>"
+            "</div>"
+        ),
+        (
+            '<div class="table-counter-card table-counter-card--metric">'
+            "<span>Peso total</span>"
+            f"<strong>{h(fmt_peso(peso_total))}</strong>"
+            "<span>na planilha</span>"
+            "</div>"
+        ),
+        (
+            '<div class="table-counter-card table-counter-card--metric">'
+            "<span>Valor total</span>"
+            f"<strong>{h(fmt_brl(valor_total))}</strong>"
+            "<span>na planilha</span>"
+            "</div>"
+        ),
+    ]
+    st.markdown(f"""<div class="table-counter-grid">{''.join(cards)}</div>""", unsafe_allow_html=True)
+
+
 def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
     last_rows = st.session_state.get("cad_peso_last_import_rows") or []
     if last_rows:
@@ -6206,6 +6236,7 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
 
         preview = pd.DataFrame(rows)
         st.dataframe(preview[["Data", "Mes", "Cidade", "PLACA", "Peso", "Valor", "Categoria"]], width="stretch", hide_index=True)
+        _render_peso_import_summary(preview)
         if st.button(f"Importar {len(rows)} entrega(s)", type="primary", width="stretch", key="cad_peso_import_sheet"):
             imported_rows: list[dict] = []
             try:
