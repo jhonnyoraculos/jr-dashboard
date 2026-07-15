@@ -2436,13 +2436,36 @@ def data_vex(params: dict | None = None) -> dict:
     }
 
 
-def _ranking_filter_category(df: pd.DataFrame, categoria: str | None) -> pd.DataFrame:
-    if not categoria or categoria == "Todos":
+def _ranking_parse_category_list(raw) -> list[str]:
+    categorias: list[str] = []
+    for value in _as_list(raw):
+        if value in (None, "", "Todos"):
+            continue
+        for part in str(value).split(","):
+            categoria = part.strip()
+            if not categoria or categoria.lower() == "todos":
+                continue
+            normalized = _normalize_category_value(categoria)
+            if normalized not in categorias:
+                categorias.append(normalized)
+    return categorias
+
+
+def _ranking_filter_categories(df: pd.DataFrame, categorias: list[str]) -> pd.DataFrame:
+    if not categorias:
         return df
     if df.empty or "Categoria" not in df.columns:
         return df.iloc[0:0].copy()
-    mask = _normalize_categoria(df["Categoria"]) == _normalize_category_value(categoria).lower()
+    targets = {categoria.lower() for categoria in categorias}
+    mask = _normalize_categoria(df["Categoria"]).isin(targets)
     return df.loc[mask].copy()
+
+
+def _truthy_param(value) -> bool:
+    raw = _param({"value": value}, "value")
+    if isinstance(raw, bool):
+        return raw
+    return str(raw or "").strip().lower() in {"1", "true", "sim", "yes", "on"}
 
 
 def _ranking_valid_plate(value) -> bool:
@@ -2608,7 +2631,8 @@ def data_frota(params: dict | None = None) -> dict:
     params = params or {}
     ano = _parse_int(_param(params, "ano"))
     meses = _parse_mes_list(params.get("mes"))
-    categoria = _param(params, "categoria")
+    categorias_filtro = _ranking_parse_category_list(params.get("categoria"))
+    incluir_hoteis = _truthy_param(params.get("incluir_hoteis"))
     placas = _ranking_parse_plate_list(params.get("placa"))
     ordenar_por = str(_param(params, "ordenar_por") or "total").strip().lower()
 
@@ -2617,18 +2641,25 @@ def data_frota(params: dict | None = None) -> dict:
     df_ped = _ranking_filter_valid_plates(_apply_plate_categories(load_pedagio()))
     df_km = _ranking_filter_valid_plates(_apply_plate_categories(load_combustivel_km()))
     df_peso = _ranking_filter_valid_plates(_apply_plate_categories(load_peso()))
+    df_hoteis = _apply_plate_categories(load_hoteis())
 
     source_frames = [df_comb, df_manu, df_ped, df_peso]
-    categoria_frames = [_ranking_filter_category(df, categoria) for df in source_frames]
+    categoria_frames = [_ranking_filter_categories(df, categorias_filtro) for df in source_frames]
     df_comb_base, df_manu_base, df_ped_base, df_peso_base = categoria_frames
-    df_km_base = _ranking_filter_category(df_km, categoria)
+    df_km_base = _ranking_filter_categories(df_km, categorias_filtro)
+    df_hoteis_base = _ranking_filter_categories(df_hoteis, categorias_filtro)
 
     anos_disponiveis: set[int] = set()
-    for df_src in (df_comb_base, df_manu_base, df_ped_base, df_km_base, df_peso_base):
+    year_frames = [df_comb_base, df_manu_base, df_ped_base, df_km_base, df_peso_base]
+    if incluir_hoteis:
+        year_frames.append(df_hoteis_base)
+    for df_src in year_frames:
         anos_disponiveis.update(_unique_years(df_src))
         anos_disponiveis.update(df_src.attrs.get("anos_sheets", []))
 
     month_frames = [df_comb_base, df_manu_base, df_ped_base, df_km_base, df_peso_base]
+    if incluir_hoteis:
+        month_frames.append(df_hoteis_base)
     if ano is not None:
         month_frames = [_filter_by_period(df, ano=ano) for df in month_frames]
     month_source = [df[["Mes"]] for df in month_frames if not df.empty and "Mes" in df.columns]
@@ -2646,6 +2677,7 @@ def data_frota(params: dict | None = None) -> dict:
     df_ped = _apply_period(df_ped_base)
     df_km = _apply_period(df_km_base)
     df_peso = _apply_period(df_peso_base)
+    df_hoteis_period = _apply_period(df_hoteis_base) if incluir_hoteis else df_hoteis_base.iloc[0:0].copy()
 
     plate_source = [df[["PLACA"]] for df in (df_comb, df_manu, df_ped, df_km, df_peso) if not df.empty and "PLACA" in df.columns]
     placas_disponiveis = _unique_sorted(pd.concat(plate_source, ignore_index=True), "PLACA") if plate_source else []
@@ -2668,7 +2700,11 @@ def data_frota(params: dict | None = None) -> dict:
     total_ped = _ranking_sum_by_plate(df_ped, "Custo")
     peso_map = _ranking_sum_by_plate(df_peso, "Peso")
     valor_peso_map = _ranking_sum_by_plate(df_peso, "Valor")
-    mensal_total = _ranking_monthly_sum([(df_comb, "Custo"), (df_manu, "Custo"), (df_ped, "Custo")], "Valor")
+    total_hoteis = float(pd.to_numeric(df_hoteis_period.get("Valor"), errors="coerce").fillna(0).sum()) if incluir_hoteis and "Valor" in df_hoteis_period.columns else 0.0
+    mensal_total_frames = [(df_comb, "Custo"), (df_manu, "Custo"), (df_ped, "Custo")]
+    if incluir_hoteis:
+        mensal_total_frames.append((df_hoteis_period, "Valor"))
+    mensal_total = _ranking_monthly_sum(mensal_total_frames, "Valor")
     mensal_peso = _ranking_monthly_sum([(df_peso, "Peso")], "Peso")
     mensal_km = _ranking_monthly_km(df_km, df_comb)
     mensal_litros = _ranking_monthly_sum([(df_comb, "Litros")], "Litros")
@@ -2726,7 +2762,8 @@ def data_frota(params: dict | None = None) -> dict:
 
     total_km = sum(row["km_total"] for row in ranking)
     total_litros = sum(row["litros_total"] for row in ranking)
-    total_gasto = sum(row["total"] for row in ranking)
+    total_gasto_placas = sum(row["total"] for row in ranking)
+    total_gasto = total_gasto_placas + total_hoteis
     total_placas = len(ranking)
     periodos_media = set(meses) if meses else {str(mes) for mes in meses_disponiveis if str(mes).strip()}
     total_meses = len(periodos_media)
@@ -2750,6 +2787,8 @@ def data_frota(params: dict | None = None) -> dict:
             "combustivel": round(sum(row["combustivel"] for row in ranking), 2),
             "manutencao": round(sum(row["manutencao"] for row in ranking), 2),
             "pedagio": round(sum(row["pedagio"] for row in ranking), 2),
+            "hoteis": round(total_hoteis, 2),
+            "inclui_hoteis": incluir_hoteis,
             "peso_total": round(sum(row["peso_total"] for row in ranking), 3),
             "valor_peso": round(sum(row["valor_peso"] for row in ranking), 2),
             "km_total": round(total_km, 2),
