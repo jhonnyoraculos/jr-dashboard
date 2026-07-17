@@ -49,6 +49,7 @@ DB_TABLES = {
     "placas": "dashboard_placas",
 }
 DB_METADATA_TABLE = "dashboard_metadata"
+BACKUP_METADATA_KEY = "backup.last_downloaded_at"
 _DB_ENGINE = None
 _METADATA_CACHE_SECONDS = float(os.environ.get("JR_METADATA_CACHE_SECONDS", "30") or 30)
 _METADATA_CACHE = {"loaded": False, "loaded_at": 0.0, "values": {}, "lock": threading.Lock()}
@@ -247,6 +248,25 @@ def _db_metadata(key: str, default=None):
 def _db_version(dataset: str):
     metadata = _metadata_table_values()
     return metadata.get(f"{dataset}.version", metadata.get("import.version", "database"))
+
+
+def get_backup_status() -> dict:
+    raw_value = _db_metadata(BACKUP_METADATA_KEY)
+    downloaded_at = None
+    if raw_value:
+        try:
+            downloaded_at = datetime.fromisoformat(str(raw_value).replace("Z", "+00:00"))
+        except Exception:
+            downloaded_at = None
+    return {"last_downloaded_at": raw_value, "last_downloaded_datetime": downloaded_at}
+
+
+def mark_backup_downloaded() -> str:
+    timestamp = datetime.now(timezone.utc).isoformat()
+    engine = _db_engine()
+    with engine.begin() as conn:
+        _write_metadata(conn, BACKUP_METADATA_KEY, timestamp)
+    return timestamp
 
 
 def _empty(columns: list[str]) -> pd.DataFrame:

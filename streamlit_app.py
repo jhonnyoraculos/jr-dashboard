@@ -7,8 +7,9 @@ import os
 import re
 import subprocess
 import unicodedata
+import zipfile
 from io import BytesIO
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -34,6 +35,20 @@ CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipament
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
 PEDAGIO_TIPO_OPTIONS = ["Pedagio", "Extras", "Taxi", "IPVA", "Seguro", "Licenciamento", "DPVAT", "Outros"]
 PEDAGIO_OPTIONAL_PLATE_TYPES = {"Extras", "Taxi"}
+BACKUP_INTERVAL_DAYS = 7
+BACKUP_TABLES = [
+    ("placas", "Placas", "placas", backend.load_placas),
+    ("combustivel", "Combustivel", "combustivel", backend.load_combustivel),
+    ("combustivel_km", "KM mensal", "km_mensal", backend.load_combustivel_km),
+    ("empilhadeira_horas", "Horas empilhadeiras", "horas_empilhadeiras", backend.load_empilhadeira_horas),
+    ("combustiveis", "Combustiveis", "combustiveis", backend.load_combustiveis),
+    ("postos", "Postos", "postos", backend.load_postos),
+    ("manutencao", "Manutencao", "manutencao", backend.load_manutencao),
+    ("pneus", "Pneus", "pneus", backend.load_pneus),
+    ("hoteis", "Hoteis", "hoteis", backend.load_hoteis),
+    ("peso", "Peso", "peso", backend.load_peso),
+    ("pedagio", "Pedagio Extras", "pedagio_extras", backend.load_pedagio),
+]
 
 PLOTLY_CONFIG = {
     "responsive": True,
@@ -5675,6 +5690,111 @@ def _sheet_xlsx_bytes(df: pd.DataFrame, sheet_name: str) -> bytes:
     return output.getvalue()
 
 
+def _backup_zip_bytes() -> bytes:
+    generated_at = datetime.now(BR_TZ)
+    summary_rows = []
+    files: list[tuple[str, bytes]] = []
+    for dataset, label, file_prefix, loader in BACKUP_TABLES:
+        try:
+            df = loader()
+            if df is None:
+                df = pd.DataFrame()
+            df = df.reset_index(drop=True)
+            status = "OK"
+            error = ""
+        except Exception as exc:
+            df = pd.DataFrame()
+            status = "Erro"
+            error = clean_text(exc)
+        summary_rows.append(
+            {
+                "Tabela": label,
+                "Arquivo": f"{file_prefix}.xlsx",
+                "Registros": int(len(df)),
+                "Status": status,
+                "Erro": error,
+            }
+        )
+        if status == "OK":
+            files.append((f"{file_prefix}.xlsx", _sheet_xlsx_bytes(df, label)))
+
+    summary = pd.DataFrame(summary_rows)
+    manifest = pd.DataFrame(
+        [
+            {"Campo": "Gerado em", "Valor": generated_at.strftime("%d/%m/%Y %H:%M:%S")},
+            {"Campo": "Total de tabelas", "Valor": len(BACKUP_TABLES)},
+            {"Campo": "Total de arquivos", "Valor": len(files)},
+        ]
+    )
+
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as backup_zip:
+        backup_zip.writestr("resumo_backup.xlsx", _sheet_xlsx_bytes(pd.concat([manifest, summary], ignore_index=True), "Resumo"))
+        for file_name, data in files:
+            backup_zip.writestr(file_name, data)
+    return output.getvalue()
+
+
+def _backup_due(last_downloaded: datetime | None) -> bool:
+    if last_downloaded is None:
+        return True
+    if last_downloaded.tzinfo is None:
+        last_downloaded = last_downloaded.replace(tzinfo=timezone.utc)
+    elapsed = datetime.now(timezone.utc) - last_downloaded.astimezone(timezone.utc)
+    return elapsed.days >= BACKUP_INTERVAL_DAYS
+
+
+def _format_backup_datetime(value: datetime | None) -> str:
+    if value is None:
+        return "Nunca"
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(BR_TZ).strftime("%d/%m/%Y %H:%M")
+
+
+def _backup_downloaded_callback() -> None:
+    try:
+        backend.mark_backup_downloaded()
+        st.session_state["backup_last_marked_at"] = datetime.now(timezone.utc).isoformat()
+    except Exception as exc:
+        st.session_state["backup_mark_error"] = clean_text(exc)
+
+
+def _render_backup_panel() -> None:
+    try:
+        status = backend.get_backup_status()
+        last_downloaded = status.get("last_downloaded_datetime")
+        status_error = ""
+    except Exception as exc:
+        last_downloaded = None
+        status_error = clean_text(exc)
+
+    due = _backup_due(last_downloaded)
+    with st.expander("Backup de seguranca", expanded=due):
+        if due:
+            st.warning("Recomendado baixar o backup semanal dos dados.")
+        else:
+            st.info(f"Ultimo backup registrado: {_format_backup_datetime(last_downloaded)}.")
+        if status_error:
+            st.caption(f"Nao foi possivel consultar a data do ultimo backup: {status_error}")
+
+        file_date = datetime.now(BR_TZ).strftime("%Y-%m-%d_%H-%M")
+        st.download_button(
+            "Baixar backup completo (.zip)",
+            data=_backup_zip_bytes(),
+            file_name=f"backup_jr_dashboard_{file_date}.zip",
+            mime="application/zip",
+            key="cadastro_backup_download",
+            on_click=_backup_downloaded_callback,
+            width="stretch",
+        )
+
+        mark_error = st.session_state.pop("backup_mark_error", "")
+        if mark_error:
+            st.caption(f"O backup foi gerado, mas nao foi possivel registrar a data: {mark_error}")
+        st.caption("O arquivo ZIP contem uma planilha por tabela e um resumo com a contagem de registros.")
+
+
 def _sheet_export_frame(df: pd.DataFrame, columns: list[tuple[str, str]]) -> pd.DataFrame:
     exported = pd.DataFrame(index=df.index)
     for source, target in columns:
@@ -6887,6 +7007,7 @@ def _render_pedagio_reset_all() -> None:
 def render_cadastro() -> None:
     topbar("JR DASHBOARD • Adicionar dados", back=True)
     with st.container(key="cadastro_shell"):
+        _render_backup_panel()
         if st.session_state.get("cadastro_active_tab") not in CADASTRO_TABS:
             st.session_state["cadastro_active_tab"] = "Placas"
         with st.container(key="cadastro_tabs"):
