@@ -5506,11 +5506,11 @@ def _date_col(label: str = "Data"):
 
 
 def _money_col(label: str):
-    return st.column_config.NumberColumn(label, min_value=0.0, step=10.0, format="R$ %.2f")
+    return st.column_config.NumberColumn(label, min_value=0.0, step=0.01, format="R$ %.2f")
 
 
-def _number_col(label: str):
-    return st.column_config.NumberColumn(label, min_value=0.0, step=1.0)
+def _number_col(label: str, *, step: float = 1.0, format: str | None = None):
+    return st.column_config.NumberColumn(label, min_value=0.0, step=step, format=format)
 
 
 def _normalize_sheet_header(value: object) -> str:
@@ -7135,8 +7135,8 @@ def render_cadastro() -> None:
                         preferred="POSTO NICODEMOS",
                     )
                 with c3:
-                    litros = st.number_input("Litros", min_value=0.0, step=1.0, key="cad_comb_litros")
-                    custo = st.number_input("Custo total", min_value=0.0, step=10.0, format="%.2f", key="cad_comb_custo")
+                    litros = st.number_input("Litros", min_value=0.0, step=0.01, format="%.2f", key="cad_comb_litros")
+                    custo = st.number_input("Custo total", min_value=0.0, step=0.01, format="%.2f", key="cad_comb_custo")
                     submitted = st.form_submit_button("Salvar combustível", type="primary", width="stretch")
                 if submitted:
                     _save_entry(
@@ -7167,7 +7167,7 @@ def render_cadastro() -> None:
                     "Categoria": st.column_config.SelectboxColumn("Categoria", options=CATEGORY_OPTIONS, required=True),
                     "Combustivel": st.column_config.TextColumn("Combustivel"),
                     "POSTOS": st.column_config.TextColumn("Posto"),
-                    "Litros": _number_col("Litros"),
+                    "Litros": _number_col("Litros", step=0.01, format="%.2f"),
                     "Custo": _money_col("Custo"),
                 },
                 ["Mes", "PLACA", "Categoria", "Combustivel", "POSTOS"],
