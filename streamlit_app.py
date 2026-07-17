@@ -4081,7 +4081,7 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
             meses_selected = normalize_multiselect(meses_selected, st.session_state.get(mes_previous_key, ["Todos"]))
 
         category_options = ["Todos", *unique_filter_options(seed.get("categorias", []) or [])]
-        categoria_default = ["Transporte"] if "Transporte" in category_options else ["Todos"]
+        categoria_default = [item for item in ("Transporte", "Freteiro") if item in category_options] or ["Todos"]
         categoria_key = "rank_categoria"
         categoria_previous_key = f"{categoria_key}__previous"
         categoria_state_exists = categoria_key in st.session_state
