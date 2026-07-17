@@ -113,6 +113,7 @@ RANK_ORDER_OPTIONS = {
     "manutencao": "Manutenção",
     "pedagio": "Pedágio/Extras",
     "peso": "Peso",
+    "valor_entregas": "Valor entregas",
 }
 
 

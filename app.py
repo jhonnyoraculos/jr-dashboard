@@ -2755,6 +2755,7 @@ def data_frota(params: dict | None = None) -> dict:
         "manutencao": "manutencao",
         "pedagio": "pedagio",
         "peso": "peso_total",
+        "valor_entregas": "valor_peso",
     }.get(ordenar_por, "combustivel")
     ranking.sort(key=lambda row: (row.get(sort_key, 0.0), row.get("total", 0.0), row.get("placa", "")), reverse=True)
     for index, row in enumerate(ranking, start=1):
