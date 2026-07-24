@@ -2930,6 +2930,24 @@ def _ranking_daily_average_costs(
     return work[columns].sort_values(["Data", "PLACA"]).reset_index(drop=True)
 
 
+def _ranking_daily_plate_costs(
+    df_peso: pd.DataFrame,
+    daily_averages: dict[str, float],
+    value_column: str,
+) -> pd.DataFrame:
+    work = _ranking_daily_average_costs(df_peso, 0.0, value_column)
+    if work.empty:
+        return work
+    work[value_column] = (
+        work["PLACA"]
+        .map(daily_averages)
+        .fillna(0.0)
+        .astype("float64")
+        .clip(lower=0)
+    )
+    return work
+
+
 def _ranking_freighter_daily_rates(registry: pd.DataFrame | None = None) -> dict[str, float]:
     if registry is None:
         try:
@@ -3146,7 +3164,14 @@ def data_frota(params: dict | None = None) -> dict:
 
     df_manu_general = df_manu.copy()
     df_peso_general = df_peso.copy()
-    general_active_days = sum(_ranking_active_days_by_plate(df_peso_general).values())
+    general_days_by_plate = _ranking_active_days_by_plate(df_peso_general)
+    general_active_days = sum(general_days_by_plate.values())
+    general_maintenance_by_plate = _ranking_sum_by_plate(df_manu_general, "Custo")
+    maintenance_daily_by_plate = {
+        plate: general_maintenance_by_plate.get(plate, 0.0) / active_days
+        for plate, active_days in general_days_by_plate.items()
+        if active_days
+    }
     general_maintenance_total = (
         float(pd.to_numeric(df_manu_general.get("Custo"), errors="coerce").fillna(0).sum())
         if "Custo" in df_manu_general.columns
@@ -3232,11 +3257,20 @@ def data_frota(params: dict | None = None) -> dict:
 
     category_map = _ranking_category_map(df_comb_base, df_manu_base, df_ped_base, df_peso_base)
     total_comb = _ranking_sum_by_plate(df_comb, "Custo")
-    df_manu_costs = (
-        _ranking_daily_average_costs(df_peso, maintenance_daily_average, "Custo")
-        if rotas
-        else df_manu
-    )
+    if rotas and placas:
+        df_manu_costs = _ranking_daily_plate_costs(
+            df_peso,
+            maintenance_daily_by_plate,
+            "Custo",
+        )
+    elif rotas:
+        df_manu_costs = _ranking_daily_average_costs(
+            df_peso,
+            maintenance_daily_average,
+            "Custo",
+        )
+    else:
+        df_manu_costs = df_manu
     total_manu = _ranking_sum_by_plate(df_manu_costs, "Custo")
     total_ped = _ranking_sum_by_plate(df_ped, "Custo")
     peso_map = _ranking_sum_by_plate(df_peso, "Peso")

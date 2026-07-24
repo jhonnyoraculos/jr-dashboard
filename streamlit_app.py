@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-rateio-media-geral-rotas-v1"
+APP_VERSION = "deploy-media-manutencao-por-placa-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -3950,6 +3950,7 @@ def frota_route_comparison_html(
     hide_fuel: bool = False,
     show_daily: bool = False,
     show_hotels: bool = False,
+    selected_plate_count: int = 0,
 ) -> str:
     route_rows = []
     for route_name, data, color in bundle:
@@ -4001,10 +4002,17 @@ def frota_route_comparison_html(
     ]
     if not hide_fuel:
         metrics.append(("Combustível", "combustivel", fmt_brl_big, ""))
+    maintenance_daily_label = (
+        "Média diária da placa"
+        if selected_plate_count == 1
+        else "Média diária das placas selecionadas"
+        if selected_plate_count > 1
+        else "Média diária geral de manutenção"
+    )
     metrics.extend(
         [
             ("Manutenção estimada", "manutencao", fmt_brl_big, ""),
-            ("Média diária geral de manutenção", "manutencao_diaria", fmt_brl_big, ""),
+            (maintenance_daily_label, "manutencao_diaria", fmt_brl_big, ""),
             ("Dias na rota", "dias_na_rota", fmt_num, ""),
             ("Pedágio/Extras", "pedagio", fmt_brl_big, ""),
         ]
@@ -4731,6 +4739,7 @@ def render_frota() -> None:
     order_label = RANK_ORDER_OPTIONS.get(str(data.get("ordenar_por") or params.get("ordenar_por")), "Combustível")
     selected_categories = [str(item) for item in (params.get("categoria") or []) if item not in (None, "", "Todos")]
     selected_routes = [str(item) for item in (params.get("rota") or []) if item not in (None, "", "Todos")]
+    selected_plates = [str(item) for item in (params.get("placa") or []) if item not in (None, "", "Todos")]
     freteiro_mode = selected_categories == ["Freteiro"]
     include_hoteis = bool(totais.get("inclui_hoteis") or params.get("incluir_hoteis"))
     ranking = data.get("ranking", []) or []
@@ -4741,6 +4750,13 @@ def render_frota() -> None:
     )
     show_route_maintenance_daily = bool(selected_routes)
     if selected_routes:
+        maintenance_method = (
+            "A manutencao usa o total de cada placa selecionada no periodo, dividido por todos os dias trabalhados "
+            "por ela, e aplica essa media aos dias dela nas rotas. "
+            if selected_plates
+            else "A manutencao usa a media diaria geral do periodo, calculada com todos, e aplica essa media "
+            "aos dias distintos das placas nas rotas. "
+        )
         comparison_hint = (
             " O comparativo individual das rotas aparece logo abaixo dos cards gerais."
             if len(selected_routes) >= 2
@@ -4749,8 +4765,8 @@ def render_frota() -> None:
         st.caption(
             "Os custos de combustivel e pedagio foram ligados por data e placa e rateados por rota. "
             "As diarias contam os dias em que cada Freteiro aparece nas rotas selecionadas. "
-            "Manutencao e hoteis usam a media diaria geral do periodo, calculada com todos, e aplicam essa media "
-            "aos dias distintos das placas nas rotas selecionadas. "
+            f"{maintenance_method}"
+            "Os hoteis usam a media diaria geral do periodo e aplicam essa media aos dias das placas nas rotas. "
             "Litros, KM e KM/L continuam usando os dados gerais da placa no periodo."
             f"{comparison_hint}"
         )
@@ -4770,7 +4786,16 @@ def render_frota() -> None:
             ("Média KM/L", f"{fmt_num(totais.get('km_por_litro'), 2)} km/L", JR_RED),
         ]
 
-    maintenance_total_label = "Manutenção estimada nas rotas" if selected_routes else "Manutenção total no período"
+    if selected_routes and selected_plates:
+        maintenance_total_label = (
+            "Manutenção estimada da placa na rota"
+            if len(selected_plates) == 1
+            else "Manutenção estimada das placas nas rotas"
+        )
+    elif selected_routes:
+        maintenance_total_label = "Manutenção estimada nas rotas"
+    else:
+        maintenance_total_label = "Manutenção total no período"
     cost_kpis = [
         ("Gasto total", fmt_brl_big(totais.get("total")), JR_RED),
         ("Média mensal de gastos", fmt_brl_big(totais.get("media_mensal")), "#0F766E"),
@@ -4779,10 +4804,17 @@ def render_frota() -> None:
     ]
     if show_route_maintenance_daily:
         route_days = fmt_num(totais.get("dias_na_rota"))
+        maintenance_daily_label = (
+            "Média diária da placa"
+            if len(selected_plates) == 1
+            else "Média diária das placas selecionadas"
+            if selected_plates
+            else "Média diária geral de manutenção"
+        )
         cost_kpis.insert(
             3,
             (
-                f"Média diária geral de manutenção ({route_days} dias aplicados)",
+                f"{maintenance_daily_label} ({route_days} dias aplicados)",
                 fmt_brl_big(totais.get("manutencao_diaria")),
                 "#7C3AED",
             ),
@@ -4826,6 +4858,7 @@ def render_frota() -> None:
                     hide_fuel=freteiro_mode,
                     show_daily=show_daily,
                     show_hotels=include_hoteis,
+                    selected_plate_count=len(selected_plates),
                 )
             )
 
@@ -4834,7 +4867,6 @@ def render_frota() -> None:
         footer("Ranking calculado com dados de combustível, manutenção, diárias e pedágio/extras do Neon. © JR")
         return
 
-    selected_plates = [str(item) for item in (params.get("placa") or []) if item not in (None, "", "Todos")]
     plate_compare = frota_plate_compare_bundle(params, selected_plates) if len(selected_plates) >= 2 else []
     if len(selected_plates) >= 2:
         selected_set = set(selected_plates)
