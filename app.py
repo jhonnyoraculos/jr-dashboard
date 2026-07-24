@@ -2908,6 +2908,28 @@ def _ranking_active_days_by_plate(df_peso: pd.DataFrame) -> dict[str, int]:
     return {str(placa): int(days or 0) for placa, days in grouped.items()}
 
 
+def _ranking_daily_average_costs(
+    df_peso: pd.DataFrame,
+    daily_average: float,
+    value_column: str,
+) -> pd.DataFrame:
+    columns = ["Data", "Mes", "PLACA", value_column]
+    if df_peso.empty or not {"Data", "PLACA"}.issubset(df_peso.columns):
+        return pd.DataFrame(columns=columns)
+
+    work = df_peso[["Data", "PLACA"]].copy()
+    work["Data"] = pd.to_datetime(work["Data"], errors="coerce").dt.normalize()
+    work["PLACA"] = work["PLACA"].astype("string").str.strip()
+    work = work.dropna(subset=["Data", "PLACA"])
+    work = work[work["PLACA"] != ""].drop_duplicates(["Data", "PLACA"])
+    if work.empty:
+        return pd.DataFrame(columns=columns)
+
+    work["Mes"] = work["Data"].dt.to_period("M").astype("string")
+    work[value_column] = max(float(daily_average or 0.0), 0.0)
+    return work[columns].sort_values(["Data", "PLACA"]).reset_index(drop=True)
+
+
 def _ranking_freighter_daily_rates(registry: pd.DataFrame | None = None) -> dict[str, float]:
     if registry is None:
         try:
@@ -3122,6 +3144,35 @@ def data_frota(params: dict | None = None) -> dict:
     df_peso = _apply_period(df_peso_base)
     df_hoteis_period = _apply_period(df_hoteis_base) if incluir_hoteis else df_hoteis_base.iloc[0:0].copy()
 
+    df_manu_general = df_manu.copy()
+    df_peso_general = df_peso.copy()
+    general_active_days = sum(_ranking_active_days_by_plate(df_peso_general).values())
+    general_maintenance_total = (
+        float(pd.to_numeric(df_manu_general.get("Custo"), errors="coerce").fillna(0).sum())
+        if "Custo" in df_manu_general.columns
+        else 0.0
+    )
+    maintenance_daily_average = (
+        general_maintenance_total / general_active_days
+        if general_active_days
+        else 0.0
+    )
+    general_hotel_total = (
+        float(pd.to_numeric(df_hoteis_period.get("Valor"), errors="coerce").fillna(0).sum())
+        if incluir_hoteis and "Valor" in df_hoteis_period.columns
+        else 0.0
+    )
+    general_hotel_days = (
+        float(pd.to_numeric(df_hoteis_period.get("Dias"), errors="coerce").fillna(0).clip(lower=0).sum())
+        if incluir_hoteis and "Dias" in df_hoteis_period.columns
+        else 0.0
+    )
+    hotel_daily_average = (
+        general_hotel_total / general_hotel_days
+        if general_hotel_days
+        else 0.0
+    )
+
     rotas_disponiveis = sorted(_ranking_route_labels(df_peso).dropna().unique().tolist())
     if rotas:
         route_shares = _ranking_weight_route_shares(df_peso)
@@ -3181,7 +3232,12 @@ def data_frota(params: dict | None = None) -> dict:
 
     category_map = _ranking_category_map(df_comb_base, df_manu_base, df_ped_base, df_peso_base)
     total_comb = _ranking_sum_by_plate(df_comb, "Custo")
-    total_manu = _ranking_sum_by_plate(df_manu, "Custo")
+    df_manu_costs = (
+        _ranking_daily_average_costs(df_peso, maintenance_daily_average, "Custo")
+        if rotas
+        else df_manu
+    )
+    total_manu = _ranking_sum_by_plate(df_manu_costs, "Custo")
     total_ped = _ranking_sum_by_plate(df_ped, "Custo")
     peso_map = _ranking_sum_by_plate(df_peso, "Peso")
     valor_peso_map = _ranking_sum_by_plate(df_peso, "Valor")
@@ -3189,16 +3245,25 @@ def data_frota(params: dict | None = None) -> dict:
     df_diarias = _ranking_freighter_daily_costs(df_peso, daily_rates)
     gasto_diarias_map = _ranking_sum_by_plate(df_diarias, "Custo")
     dias_trabalhados_map = _ranking_count_by_plate(df_diarias)
-    total_hoteis = float(pd.to_numeric(df_hoteis_period.get("Valor"), errors="coerce").fillna(0).sum()) if incluir_hoteis and "Valor" in df_hoteis_period.columns else 0.0
-    total_dias_hoteis = (
-        float(pd.to_numeric(df_hoteis_period.get("Dias"), errors="coerce").fillna(0).clip(lower=0).sum())
-        if incluir_hoteis and "Dias" in df_hoteis_period.columns
+    df_hoteis_costs = (
+        _ranking_daily_average_costs(df_peso, hotel_daily_average, "Valor")
+        if incluir_hoteis and rotas
+        else df_hoteis_period
+    )
+    total_hoteis = (
+        float(pd.to_numeric(df_hoteis_costs.get("Valor"), errors="coerce").fillna(0).sum())
+        if incluir_hoteis and "Valor" in df_hoteis_costs.columns
         else 0.0
     )
-    hoteis_diaria = (total_hoteis / total_dias_hoteis) if total_dias_hoteis else 0.0
-    mensal_total_frames = [(df_comb, "Custo"), (df_manu, "Custo"), (df_ped, "Custo"), (df_diarias, "Custo")]
+    total_dias_hoteis = (
+        float(len(df_hoteis_costs))
+        if incluir_hoteis and rotas
+        else general_hotel_days
+    )
+    hoteis_diaria = hotel_daily_average
+    mensal_total_frames = [(df_comb, "Custo"), (df_manu_costs, "Custo"), (df_ped, "Custo"), (df_diarias, "Custo")]
     if incluir_hoteis:
-        mensal_total_frames.append((df_hoteis_period, "Valor"))
+        mensal_total_frames.append((df_hoteis_costs, "Valor"))
     mensal_total = _ranking_monthly_sum(mensal_total_frames, "Valor")
     mensal_peso = _ranking_monthly_sum([(df_peso, "Peso")], "Peso")
     mensal_km = _ranking_monthly_km(df_km, df_comb_metrics)

@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-comparativo-rotas-v1"
+APP_VERSION = "deploy-rateio-media-geral-rotas-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -3936,7 +3936,6 @@ def frota_route_compare_bundle(params: dict[str, object], selected_routes: list[
     for index, route_name in enumerate(selected_routes):
         route_params = dict(params)
         route_params["rota"] = [route_name]
-        route_params["incluir_hoteis"] = False
         try:
             data = route_json("frota", route_params)
         except Exception:
@@ -3950,6 +3949,7 @@ def frota_route_comparison_html(
     *,
     hide_fuel: bool = False,
     show_daily: bool = False,
+    show_hotels: bool = False,
 ) -> str:
     route_rows = []
     for route_name, data, color in bundle:
@@ -3968,6 +3968,9 @@ def frota_route_comparison_html(
                 "pedagio": totals.get("pedagio"),
                 "gasto_diarias": totals.get("gasto_diarias"),
                 "dias_trabalhados": totals.get("dias_trabalhados"),
+                "hoteis": totals.get("hoteis"),
+                "hoteis_diaria": totals.get("hoteis_diaria"),
+                "dias_hoteis": totals.get("dias_hoteis"),
                 "peso": totals.get("peso_total"),
             }
         )
@@ -3995,19 +3998,33 @@ def frota_route_comparison_html(
         ("Placas", "placas", fmt_num, ""),
         ("Ganho das entregas", "ganho", fmt_brl_big, " route-compare-metric--gain"),
         ("Gasto total da rota", "total", fmt_brl_big, ""),
-        ("Manutenção total", "manutencao", fmt_brl_big, ""),
-        ("Manutenção/dia", "manutencao_diaria", fmt_brl_big, ""),
-        ("Dias na rota", "dias_na_rota", fmt_num, ""),
-        ("Pedágio/Extras", "pedagio", fmt_brl_big, ""),
-        ("Peso total", "peso", fmt_peso, ""),
     ]
     if not hide_fuel:
-        metrics.insert(3, ("Combustível", "combustivel", fmt_brl_big, ""))
-    if show_daily:
-        metrics[7:7] = [
-            ("Gasto com diárias", "gasto_diarias", fmt_brl_big, ""),
-            ("Dias trabalhados", "dias_trabalhados", fmt_num, ""),
+        metrics.append(("Combustível", "combustivel", fmt_brl_big, ""))
+    metrics.extend(
+        [
+            ("Manutenção estimada", "manutencao", fmt_brl_big, ""),
+            ("Média diária geral de manutenção", "manutencao_diaria", fmt_brl_big, ""),
+            ("Dias na rota", "dias_na_rota", fmt_num, ""),
+            ("Pedágio/Extras", "pedagio", fmt_brl_big, ""),
         ]
+    )
+    if show_daily:
+        metrics.extend(
+            [
+                ("Gasto com diárias", "gasto_diarias", fmt_brl_big, ""),
+                ("Dias trabalhados", "dias_trabalhados", fmt_num, ""),
+            ]
+        )
+    if show_hotels:
+        metrics.extend(
+            [
+                ("Hotéis estimados", "hoteis", fmt_brl_big, ""),
+                ("Média diária geral de hotéis", "hoteis_diaria", fmt_brl_big, ""),
+                ("Dias aplicados aos hotéis", "dias_hoteis", fmt_num, ""),
+            ]
+        )
+    metrics.append(("Peso total", "peso", fmt_peso, ""))
 
     cards = []
     for row in route_rows:
@@ -4732,7 +4749,8 @@ def render_frota() -> None:
         st.caption(
             "Os custos de combustivel e pedagio foram ligados por data e placa e rateados por rota. "
             "As diarias contam os dias em que cada Freteiro aparece nas rotas selecionadas. "
-            "A manutencao por dia divide o total de manutencao pela soma dos dias distintos das placas nas rotas. "
+            "Manutencao e hoteis usam a media diaria geral do periodo, calculada com todos, e aplicam essa media "
+            "aos dias distintos das placas nas rotas selecionadas. "
             "Litros, KM e KM/L continuam usando os dados gerais da placa no periodo."
             f"{comparison_hint}"
         )
@@ -4752,17 +4770,22 @@ def render_frota() -> None:
             ("Média KM/L", f"{fmt_num(totais.get('km_por_litro'), 2)} km/L", JR_RED),
         ]
 
+    maintenance_total_label = "Manutenção estimada nas rotas" if selected_routes else "Manutenção total no período"
     cost_kpis = [
         ("Gasto total", fmt_brl_big(totais.get("total")), JR_RED),
         ("Média mensal de gastos", fmt_brl_big(totais.get("media_mensal")), "#0F766E"),
-        ("Manutenção total no período", fmt_brl_big(totais.get("manutencao")), JR_RED),
+        (maintenance_total_label, fmt_brl_big(totais.get("manutencao")), JR_RED),
         ("Pedágio/Extras", fmt_brl_big(totais.get("pedagio")), "#D97706"),
     ]
     if show_route_maintenance_daily:
         route_days = fmt_num(totais.get("dias_na_rota"))
         cost_kpis.insert(
             3,
-            (f"Manutenção/dia ({route_days} dias)", fmt_brl_big(totais.get("manutencao_diaria")), "#7C3AED"),
+            (
+                f"Média diária geral de manutenção ({route_days} dias aplicados)",
+                fmt_brl_big(totais.get("manutencao_diaria")),
+                "#7C3AED",
+            ),
         )
     if show_daily:
         cost_kpis.extend(
@@ -4773,10 +4796,16 @@ def render_frota() -> None:
         )
     if include_hoteis:
         hotel_days = fmt_num(totais.get("dias_hoteis"))
+        hotel_total_label = "Hotéis estimados nas rotas" if selected_routes else "Hotéis total no período"
+        hotel_daily_label = (
+            f"Média diária geral de hotéis ({hotel_days} dias aplicados)"
+            if selected_routes
+            else f"Hotéis/dia ({hotel_days} dias)"
+        )
         cost_kpis.extend(
             [
-                ("Hotéis total no período", fmt_brl_big(totais.get("hoteis")), "#0F766E"),
-                (f"Hotéis/dia ({hotel_days} dias)", fmt_brl_big(totais.get("hoteis_diaria")), "#0F766E"),
+                (hotel_total_label, fmt_brl_big(totais.get("hoteis")), "#0F766E"),
+                (hotel_daily_label, fmt_brl_big(totais.get("hoteis_diaria")), "#0F766E"),
             ]
         )
 
@@ -4796,12 +4825,9 @@ def render_frota() -> None:
                     route_compare,
                     hide_fuel=freteiro_mode,
                     show_daily=show_daily,
+                    show_hotels=include_hoteis,
                 )
             )
-            if include_hoteis:
-                st.caption(
-                    "Os hotéis permanecem no consolidado geral, mas não entram no comparativo entre rotas porque não possuem rota vinculada."
-                )
 
     if not ranking:
         st.markdown('<div class="ranking-empty">Nenhum caminhão encontrado para os filtros selecionados.</div>', unsafe_allow_html=True)
