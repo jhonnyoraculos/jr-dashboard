@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-manutencao-placas-da-rota-v1"
+APP_VERSION = "deploy-percentual-custo-entregas-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -1539,6 +1539,11 @@ def inject_css() -> None:
           color: #15803d;
         }}
 
+        .route-compare-metric--ratio span:last-child {{
+          color: #d97706;
+          font-size: 15px;
+        }}
+
         .route-compare-note {{
           margin: -4px 0 14px;
           color: var(--muted);
@@ -2267,6 +2272,16 @@ def fmt_num(value: object, decimals: int = 0) -> str:
     if decimals == 0:
         return formatted.split(",")[0]
     return formatted
+
+
+def fmt_percent(value: object, decimals: int = 2) -> str:
+    if value is None:
+        return "—"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    return f"{fmt_num(number, decimals)}%"
 
 
 def fmt_peso(value: object) -> str:
@@ -3955,37 +3970,54 @@ def frota_route_comparison_html(
     route_rows = []
     for route_name, data, color in bundle:
         totals = data.get("totais", {}) if isinstance(data, dict) else {}
-        route_rows.append(
-            {
-                "rota": route_name,
-                "color": color,
-                "placas": totals.get("placas"),
-                "ganho": totals.get("valor_peso"),
-                "total": totals.get("total"),
-                "combustivel": totals.get("combustivel"),
-                "manutencao": totals.get("manutencao"),
-                "manutencao_diaria": totals.get("manutencao_diaria"),
-                "dias_na_rota": totals.get("dias_na_rota"),
-                "pedagio": totals.get("pedagio"),
-                "gasto_diarias": totals.get("gasto_diarias"),
-                "dias_trabalhados": totals.get("dias_trabalhados"),
-                "hoteis": totals.get("hoteis"),
-                "hoteis_diaria": totals.get("hoteis_diaria"),
-                "dias_hoteis": totals.get("dias_hoteis"),
-                "peso": totals.get("peso_total"),
-            }
+        route_row = {
+            "rota": route_name,
+            "color": color,
+            "placas": totals.get("placas"),
+            "ganho": totals.get("valor_peso"),
+            "total": totals.get("total"),
+            "combustivel": totals.get("combustivel"),
+            "manutencao": totals.get("manutencao"),
+            "manutencao_diaria": totals.get("manutencao_diaria"),
+            "dias_na_rota": totals.get("dias_na_rota"),
+            "pedagio": totals.get("pedagio"),
+            "gasto_diarias": totals.get("gasto_diarias"),
+            "dias_trabalhados": totals.get("dias_trabalhados"),
+            "hoteis": totals.get("hoteis"),
+            "hoteis_diaria": totals.get("hoteis_diaria"),
+            "dias_hoteis": totals.get("dias_hoteis"),
+            "peso": totals.get("peso_total"),
+        }
+        delivery_value = _ranking_float(route_row, "ganho")
+        route_row["percentual_custo"] = (
+            _ranking_float(route_row, "total") / delivery_value * 100
+            if delivery_value > 0
+            else None
         )
+        route_rows.append(route_row)
     if len(route_rows) < 2:
         return ""
 
     highest_gain = max(route_rows, key=lambda row: _ranking_float(row, "ganho"))
     lowest_cost = min(route_rows, key=lambda row: _ranking_float(row, "total"))
     highest_weight = max(route_rows, key=lambda row: _ranking_float(row, "peso"))
+    routes_with_delivery_value = [
+        row for row in route_rows if _ranking_float(row, "ganho") > 0
+    ]
     highlights = [
         ("Maior ganho das entregas", highest_gain, "ganho", fmt_brl_big),
         ("Menor gasto total", lowest_cost, "total", fmt_brl_big),
         ("Maior peso transportado", highest_weight, "peso", fmt_peso),
     ]
+    if routes_with_delivery_value:
+        lowest_cost_ratio = min(
+            routes_with_delivery_value,
+            key=lambda row: _ranking_float(row, "percentual_custo"),
+        )
+        highlights.insert(
+            2,
+            ("Menor custo sobre entregas", lowest_cost_ratio, "percentual_custo", fmt_percent),
+        )
     highlight_html = "".join(
         '<div class="ranking-difference-item">'
         f'<p class="ranking-difference-label">{h(label)}</p>'
@@ -3999,6 +4031,7 @@ def frota_route_comparison_html(
         ("Placas", "placas", fmt_num, ""),
         ("Ganho das entregas", "ganho", fmt_brl_big, " route-compare-metric--gain"),
         ("Gasto total da rota", "total", fmt_brl_big, ""),
+        ("Custo sobre o valor das entregas", "percentual_custo", fmt_percent, " route-compare-metric--ratio"),
     ]
     if not hide_fuel:
         metrics.append(("Combustível", "combustivel", fmt_brl_big, ""))
@@ -4777,6 +4810,17 @@ def render_frota() -> None:
         ("Peso total", fmt_peso(totais.get("peso_total")), JR_BLUE),
         ("Ordenado por", order_label, JR_BLUE),
     ]
+    if selected_routes:
+        delivery_value = _ranking_float(totais, "valor_peso")
+        cost_percentage = (
+            _ranking_float(totais, "total") / delivery_value * 100
+            if delivery_value > 0
+            else None
+        )
+        summary_kpis.insert(
+            2,
+            ("Custo sobre o valor das entregas", fmt_percent(cost_percentage), "#D97706"),
+        )
     operation_kpis = []
     if not freteiro_mode:
         operation_kpis = [
