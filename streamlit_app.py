@@ -4054,7 +4054,7 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
     year_index = year_options.index(year_default) if year_default in year_options else 0
 
     with st.container(key="rank_filterbar"):
-        cols = st.columns([0.7, 1.05, 1.2, 1.35, 0.88, 1.0, 0.92, 0.72])
+        cols = st.columns([0.65, 1.0, 1.05, 1.1, 1.15, 0.78, 1.0, 0.88, 0.68])
         with cols[0]:
             ano = st.selectbox(
                 "Ano",
@@ -4125,14 +4125,49 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
         categoria_param = query_multiselect(categoria_selected)
         only_freteiro = categoria_param == ["Freteiro"]
 
-        plate_seed = route_json(
+        route_seed_params = {
+            "ano": None if ano == "Todos" else ano,
+            "mes": query_mes(meses_selected),
+            "categoria": categoria_param,
+            "ordenar_por": "total",
+        }
+        route_seed = route_json(
             "frota",
-            {
-                "ano": None if ano == "Todos" else ano,
-                "mes": query_mes(meses_selected),
-                "categoria": categoria_param,
-                "ordenar_por": "total",
-            },
+            route_seed_params,
+        )
+        route_options = ["Todos", *unique_filter_options(route_seed.get("rotas", []) or [])]
+        route_key = "rank_rota"
+        route_previous_key = f"{route_key}__previous"
+        route_state_exists = route_key in st.session_state
+        current_routes = st.session_state.get(route_key, ["Todos"])
+        current_routes = [item for item in current_routes if item in route_options] or ["Todos"]
+        if route_state_exists and st.session_state.get(route_key) != current_routes:
+            st.session_state[route_key] = current_routes
+            st.session_state[route_previous_key] = current_routes
+        if route_previous_key not in st.session_state:
+            st.session_state[route_previous_key] = current_routes
+        with cols[3]:
+            route_kwargs = {
+                "key": route_key,
+                "on_change": sync_multiselect_selection,
+                "args": (route_key,),
+                "format_func": select_all_label("Rota"),
+                "label_visibility": "collapsed",
+                "placeholder": "Rota (Todas)",
+            }
+            if not route_state_exists:
+                route_kwargs["default"] = current_routes
+            routes_selected = st.multiselect("Rota", route_options, **route_kwargs)
+            routes_selected = normalize_multiselect(
+                routes_selected,
+                st.session_state.get(route_previous_key, ["Todos"]),
+            )
+        route_param = query_multiselect(routes_selected)
+
+        plate_seed = (
+            route_seed
+            if route_param == ["Todos"]
+            else route_json("frota", {**route_seed_params, "rota": route_param})
         )
         plate_options = ["Todos", *unique_filter_options(plate_seed.get("placas", []) or [])]
         plate_key = "rank_placa"
@@ -4145,7 +4180,7 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
             st.session_state[plate_previous_key] = current_plates
         if plate_previous_key not in st.session_state:
             st.session_state[plate_previous_key] = current_plates
-        with cols[3]:
+        with cols[4]:
             plate_kwargs = {
                 "key": plate_key,
                 "on_change": sync_multiselect_selection,
@@ -4158,7 +4193,7 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
             placas_selected = normalize_multiselect(placas_selected, st.session_state.get(plate_previous_key, ["Todos"]))
 
         include_hoteis = bool(st.session_state.get("rank_incluir_hoteis", False))
-        with cols[4]:
+        with cols[5]:
             include_hoteis = st.checkbox(
                 "Incluir hotéis",
                 value=include_hoteis,
@@ -4171,7 +4206,7 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
         if order_current not in order_options:
             order_current = "total"
             st.session_state["rank_ordenar_por"] = order_current
-        with cols[5]:
+        with cols[6]:
             ordenar_por = st.selectbox(
                 "Ordenar por",
                 order_options,
@@ -4181,19 +4216,20 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
                 label_visibility="collapsed",
             )
 
-        with cols[6]:
+        with cols[7]:
             if st.button("Limpar filtros", key="rank_clear", width="stretch"):
                 for state_key in list(st.session_state.keys()):
                     if state_key.startswith("rank_"):
                         del st.session_state[state_key]
                 st.rerun()
-        with cols[7]:
+        with cols[8]:
             st.markdown('<a class="filter-back" href="?page=home" target="_self">&larr; Voltar</a>', unsafe_allow_html=True)
 
     return {
         "ano": None if ano == "Todos" else ano,
         "mes": query_mes(meses_selected),
         "categoria": categoria_param,
+        "rota": route_param,
         "incluir_hoteis": include_hoteis,
         "placa": ["Todos"] if placas_selected == ["Todos"] else [str(item) for item in placas_selected],
         "ordenar_por": ordenar_por,
