@@ -2887,56 +2887,59 @@ def _ranking_monthly_km(df_km: pd.DataFrame, _df_comb: pd.DataFrame) -> dict:
     return {"Mes": meses, "Km Rodados": [round(km_override.get(mes, 0.0), 3) for mes in meses]}
 
 
-def _ranking_weight_dominance_by_city(df: pd.DataFrame, placas: list[str] | None = None) -> dict:
-    if df.empty or not {"Cidade", "PLACA", "Peso"}.issubset(df.columns):
-        return {"labels": [], "values": [], "city_counts": [], "cidades": []}
+def _ranking_weight_dominance_by_route(df: pd.DataFrame, placas: list[str] | None = None) -> dict:
+    if df.empty or not {"PLACA", "Peso"}.issubset(df.columns):
+        return {"labels": [], "values": [], "route_counts": [], "rotas": []}
 
-    work = df[["Cidade", "PLACA", "Peso"]].copy()
-    work["Cidade"] = work["Cidade"].astype("string").str.strip().str.upper()
+    columns = ["PLACA", "Peso"]
+    if "Rota" in df.columns:
+        columns.insert(0, "Rota")
+    work = df[columns].copy()
+    work["Rota"] = _ranking_route_labels(work).str.upper()
     work["PLACA"] = work["PLACA"].astype("string").str.strip()
     work["Peso"] = pd.to_numeric(work["Peso"], errors="coerce").fillna(0.0)
     work = work[
-        (work["Cidade"].notna())
-        & (work["Cidade"] != "")
+        (work["Rota"].notna())
+        & (work["Rota"] != "")
         & (work["PLACA"].notna())
         & (work["PLACA"] != "")
         & (work["Peso"] > 0)
     ]
     if work.empty:
-        return {"labels": [], "values": [], "city_counts": [], "cidades": []}
+        return {"labels": [], "values": [], "route_counts": [], "rotas": []}
 
-    grouped = work.groupby(["Cidade", "PLACA"], as_index=False)["Peso"].sum()
-    city_totals = grouped.groupby("Cidade", as_index=False)["Peso"].sum().rename(columns={"Peso": "PesoCidade"})
-    grouped = grouped.merge(city_totals, on="Cidade", how="left")
+    grouped = work.groupby(["Rota", "PLACA"], as_index=False)["Peso"].sum()
+    route_totals = grouped.groupby("Rota", as_index=False)["Peso"].sum().rename(columns={"Peso": "PesoRota"})
+    grouped = grouped.merge(route_totals, on="Rota", how="left")
     grouped["Participacao"] = grouped.apply(
-        lambda row: float(row["Peso"] / row["PesoCidade"] * 100) if row["PesoCidade"] else 0.0,
+        lambda row: float(row["Peso"] / row["PesoRota"] * 100) if row["PesoRota"] else 0.0,
         axis=1,
     )
     placas = [str(placa).strip() for placa in (placas or []) if str(placa).strip()]
     if placas:
         selected = grouped[grouped["PLACA"].isin(placas)].copy()
     else:
-        selected = grouped.sort_values(["Cidade", "Peso", "PLACA"], ascending=[True, False, True]).drop_duplicates("Cidade", keep="first").copy()
+        selected = grouped.sort_values(["Rota", "Peso", "PLACA"], ascending=[True, False, True]).drop_duplicates("Rota", keep="first").copy()
 
     if selected.empty:
-        return {"labels": [], "values": [], "city_counts": [], "cidades": []}
+        return {"labels": [], "values": [], "route_counts": [], "rotas": []}
 
-    by_plate = selected.groupby("PLACA", as_index=False).agg(Peso=("Peso", "sum"), Cidades=("Cidade", "count"))
-    by_plate = by_plate.sort_values(["Peso", "Cidades", "PLACA"], ascending=[False, False, True])
-    cities = selected.sort_values(["Peso", "Cidade", "PLACA"], ascending=[False, True, True])
+    by_plate = selected.groupby("PLACA", as_index=False).agg(Peso=("Peso", "sum"), Rotas=("Rota", "count"))
+    by_plate = by_plate.sort_values(["Peso", "Rotas", "PLACA"], ascending=[False, False, True])
+    routes = selected.sort_values(["Peso", "Rota", "PLACA"], ascending=[False, True, True])
     return {
         "labels": [str(item) for item in by_plate["PLACA"].tolist()],
         "values": [round(float(item), 3) for item in by_plate["Peso"].tolist()],
-        "city_counts": [int(item) for item in by_plate["Cidades"].tolist()],
-        "cidades": [
+        "route_counts": [int(item) for item in by_plate["Rotas"].tolist()],
+        "rotas": [
             {
-                "cidade": str(row["Cidade"]),
+                "rota": str(row["Rota"]),
                 "placa": str(row["PLACA"]),
                 "peso": round(float(row["Peso"]), 3),
-                "peso_cidade": round(float(row["PesoCidade"]), 3),
+                "peso_rota": round(float(row["PesoRota"]), 3),
                 "participacao": round(float(row["Participacao"]), 2),
             }
-            for _, row in cities.iterrows()
+            for _, row in routes.iterrows()
         ],
     }
 
@@ -3066,7 +3069,7 @@ def data_frota(params: dict | None = None) -> dict:
     df_ped = _ranking_filter_plates(df_ped, placas)
     df_km = _ranking_filter_plates(df_km, placas)
     df_peso = _ranking_filter_plates(df_peso, placas)
-    dominancia_peso = _ranking_weight_dominance_by_city(df_peso_dominancia, placas)
+    dominancia_peso = _ranking_weight_dominance_by_route(df_peso_dominancia, placas)
 
     categorias = set()
     for df_src in source_frames:

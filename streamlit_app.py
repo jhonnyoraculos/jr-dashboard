@@ -4415,39 +4415,39 @@ def dominance_cities_html(placa: str, cidades: list[dict]) -> str:
     )
 
 
-def dominance_city_ranking_html(cidades: list[dict]) -> str:
-    city_rows = sorted(cidades or [], key=lambda item: float(item.get("peso") or 0), reverse=True)
-    if not city_rows:
+def dominance_route_ranking_html(rotas: list[dict]) -> str:
+    route_rows = sorted(rotas or [], key=lambda item: float(item.get("peso") or 0), reverse=True)
+    if not route_rows:
         return (
             '<div class="dominance-panel">'
-            '<p class="dominance-title">Ranking de peso por cidade e placa</p>'
-            '<p class="dominance-note">Ainda nao ha cidades com peso para os filtros selecionados.</p>'
+            '<p class="dominance-title">Ranking de peso por rota e placa</p>'
+            '<p class="dominance-note">Ainda nao ha rotas com peso para os filtros selecionados.</p>'
             '</div>'
         )
 
     rows_html = [
         '<div class="dominance-city-row dominance-city-row--head">'
-        '<span class="dominance-city-name">Cidade</span>'
+        '<span class="dominance-city-name">Rota</span>'
         '<span class="dominance-city-plate">Placa</span>'
         '<span class="dominance-city-metric">Peso</span>'
         '<span class="dominance-city-metric">Dominio</span>'
-        '<span class="dominance-city-metric">Total cidade</span>'
+        '<span class="dominance-city-metric">Total rota</span>'
         '</div>'
     ]
-    for index, item in enumerate(city_rows, start=1):
+    for index, item in enumerate(route_rows, start=1):
         rows_html.append(
             '<div class="dominance-city-row">'
-            f'<span class="dominance-city-name">{index:02d} - {h(item.get("cidade") or "Sem cidade")}</span>'
+            f'<span class="dominance-city-name">{index:02d} - {h(item.get("rota") or "Sem rota")}</span>'
             f'<span class="dominance-city-plate">{h(item.get("placa") or "Sem placa")}</span>'
             f'<span class="dominance-city-metric">{h(fmt_peso(item.get("peso")))}</span>'
             f'<span class="dominance-city-metric">{h(fmt_num(item.get("participacao"), 2))}%</span>'
-            f'<span class="dominance-city-metric">{h(fmt_peso(item.get("peso_cidade")))}</span>'
+            f'<span class="dominance-city-metric">{h(fmt_peso(item.get("peso_rota")))}</span>'
             '</div>'
         )
     return (
         '<div class="dominance-panel">'
-        '<p class="dominance-title">Ranking de peso por cidade e placa</p>'
-        '<p class="dominance-note">Cada cidade aparece com a placa que mais domina por peso nos filtros selecionados.</p>'
+        '<p class="dominance-title">Ranking de peso por rota e placa</p>'
+        '<p class="dominance-note">Cada rota aparece com a placa que mais transportou peso nos filtros selecionados.</p>'
         f'<div class="dominance-cities">{"".join(rows_html)}</div>'
         '</div>'
     )
@@ -4630,11 +4630,11 @@ def render_frota() -> None:
     chart_grid(chart_items, key_prefix="rank_chart")
 
     dominancia = data.get("dominancia_peso", {}) or {}
-    cidades_dominadas = dominancia.get("cidades", []) or []
-    if cidades_dominadas:
+    rotas_dominadas = dominancia.get("rotas", []) or []
+    if rotas_dominadas:
         with st.container(border=True):
-            st.html('<div class="chart-title">Ranking de peso por cidade e placa</div>')
-            st.markdown(dominance_city_ranking_html(cidades_dominadas), unsafe_allow_html=True)
+            st.html('<div class="chart-title">Ranking de peso por rota e placa</div>')
+            st.markdown(dominance_route_ranking_html(rotas_dominadas), unsafe_allow_html=True)
 
     header_columns = ["#", "Placa", "Total", "Manutencao", "Pedagio/Extras", "Peso"]
     if not freteiro_mode:
