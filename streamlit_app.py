@@ -6512,12 +6512,12 @@ def _render_peso_route_import() -> None:
 
     with st.expander("Importar somente rotas", expanded=False):
         st.info(
-            "Esta importacao atualiza somente a coluna Rota. "
-            "Peso, valor, placa, cidade e os demais dados permanecem como estao."
+            "A rota informada sera aplicada a todos os registros de Peso daquela data. "
+            "Somente a coluna Rota sera alterada; os demais dados permanecem como estao."
         )
         st.caption(
-            "Use uma linha de DATA e ROTA para cada entrega ainda sem rota. "
-            "Em datas repetidas, mantenha a mesma ordem das entregas da planilha de peso."
+            "Use uma linha por data, com as colunas DATA e ROTA. "
+            "Se a mesma data aparecer mais de uma vez, a rota precisa ser igual."
         )
         _render_sheet_downloads(
             backend.load_peso_route_template,
@@ -6575,18 +6575,25 @@ def _render_peso_route_import() -> None:
         matches = preview_result.get("matches") or []
         preview = pd.DataFrame(matches)
         if preview.empty:
-            st.warning("Nao ha registros de peso sem rota correspondentes a esta planilha.")
+            st.warning("Nao ha registros de peso correspondentes a esta planilha.")
             return
 
-        preview_columns = ["Data", "Rota", "PLACA", "Cidade", "Peso", "Valor"]
-        st.success(f"{len(preview)} rota(s) conferida(s) e pronta(s) para atualizar.")
+        route_dates = len({str(row.get("Data")) for row in rows})
+        preview_display = preview.rename(
+            columns={"RotaAtual": "Rota atual", "Rota": "Nova rota", "PLACA": "Placa"}
+        )
+        preview_columns = ["Data", "Rota atual", "Nova rota", "Placa", "Cidade", "Peso", "Valor"]
+        st.success(
+            f"{route_dates} data(s) conferida(s). "
+            f"A rota sera aplicada a {len(preview)} registro(s) de peso."
+        )
         st.dataframe(
-            preview[[column for column in preview_columns if column in preview.columns]],
+            preview_display[[column for column in preview_columns if column in preview_display.columns]],
             width="stretch",
             hide_index=True,
         )
         if st.button(
-            f"Atualizar {len(preview)} rota(s)",
+            f"Aplicar rota em {len(preview)} registro(s)",
             type="primary",
             width="stretch",
             key="cad_peso_route_import_confirm",
@@ -6601,7 +6608,7 @@ def _render_peso_route_import() -> None:
             clear_cached_reads()
             st.session_state["cad_peso_route_upload_nonce"] = upload_nonce + 1
             st.session_state["cad_peso_route_last_success"] = (
-                f"{updated} rota(s) atualizada(s). Os demais dados de peso foram preservados."
+                f"{updated} registro(s) de peso atualizado(s). Os demais dados foram preservados."
             )
             st.rerun()
 

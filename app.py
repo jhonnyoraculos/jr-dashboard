@@ -684,7 +684,7 @@ def append_dashboard_records(dataset: str, rows: list[dict], *, update_plate_reg
 
 
 def load_peso_route_template() -> pd.DataFrame:
-    """Return peso rows still missing a route, preserving their database order."""
+    """Return one route row per date registered in peso."""
     from sqlalchemy import text
 
     table = _quote_identifier(DB_TABLES["peso"])
@@ -695,23 +695,31 @@ def load_peso_route_template() -> pd.DataFrame:
         df = pd.read_sql_query(
             text(
                 f"""
-                SELECT "Data", "Mes", COALESCE("Rota", '') AS "Rota"
+                SELECT
+                    CAST("Data" AS DATE) AS "Data",
+                    TO_CHAR(CAST("Data" AS DATE), 'YYYY-MM') AS "Mes",
+                    CASE
+                        WHEN COUNT(DISTINCT NULLIF(TRIM("Rota"), '')) = 1
+                        THEN MAX(NULLIF(TRIM("Rota"), ''))
+                        ELSE ''
+                    END AS "Rota"
                 FROM {table}
-                WHERE COALESCE(TRIM("Rota"), '') = ''
-                ORDER BY ctid
+                WHERE "Data" IS NOT NULL
+                GROUP BY CAST("Data" AS DATE)
+                ORDER BY CAST("Data" AS DATE)
                 """
             ),
             engine,
         )
     except Exception as exc:
-        raise RuntimeError("Nao foi possivel carregar os registros de peso sem rota no Neon.") from exc
+        raise RuntimeError("Nao foi possivel carregar as datas de peso no Neon.") from exc
 
     df["Data"] = pd.to_datetime(df.get("Data"), errors="coerce")
     return df[["Data", "Mes", "Rota"]].copy()
 
 
 def _prepare_peso_route_rows(rows: list[dict]) -> list[dict]:
-    prepared: list[dict] = []
+    prepared_by_date: dict[object, dict] = {}
     for index, row in enumerate(rows, start=2):
         parsed_date = pd.to_datetime(row.get("Data"), dayfirst=True, errors="coerce")
         route = str(row.get("Rota") or "").strip().upper()
@@ -719,7 +727,14 @@ def _prepare_peso_route_rows(rows: list[dict]) -> list[dict]:
             raise ValueError(f"Linha {index}: data invalida.")
         if not route:
             raise ValueError(f"Linha {index}: rota nao preenchida.")
-        prepared.append({"Data": parsed_date.date(), "Rota": route})
+        route_date = parsed_date.date()
+        previous = prepared_by_date.get(route_date)
+        if previous and previous["Rota"] != route:
+            raise ValueError(
+                f"Data {route_date.strftime('%d/%m/%Y')}: existem rotas diferentes na mesma planilha."
+            )
+        prepared_by_date[route_date] = {"Data": route_date, "Rota": route}
+    prepared = list(prepared_by_date.values())
     if not prepared:
         raise ValueError("Nenhuma rota valida para importar.")
     return prepared
@@ -729,15 +744,12 @@ def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[
     from sqlalchemy import text
 
     prepared = _prepare_peso_route_rows(rows)
-    grouped: dict[object, list[dict]] = defaultdict(list)
-    for row in prepared:
-        grouped[row["Data"]].append(row)
-
     table = _quote_identifier(DB_TABLES["peso"])
     matches: list[dict] = []
     errors: list[str] = []
     lock_sql = " FOR UPDATE" if lock else ""
-    for route_date, route_rows in grouped.items():
+    for route_row in prepared:
+        route_date = route_row["Data"]
         candidates = conn.execute(
             text(
                 f"""
@@ -748,10 +760,10 @@ def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[
                     "PLACA",
                     "Categoria",
                     "Peso",
-                    "Valor"
+                    "Valor",
+                    "Rota" AS "RotaAtual"
                 FROM {table}
                 WHERE CAST("Data" AS DATE) = :route_date
-                  AND COALESCE(TRIM("Rota"), '') = ''
                 ORDER BY ctid
                 {lock_sql}
                 """
@@ -759,14 +771,13 @@ def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[
             {"route_date": route_date},
         ).mappings().all()
 
-        if len(candidates) != len(route_rows):
+        if not candidates:
             errors.append(
-                f"{route_date.strftime('%d/%m/%Y')}: "
-                f"{len(route_rows)} rota(s) na planilha e {len(candidates)} registro(s) de peso sem rota."
+                f"{route_date.strftime('%d/%m/%Y')}: nenhum registro de peso encontrado."
             )
             continue
 
-        for route_row, candidate in zip(route_rows, candidates):
+        for candidate in candidates:
             match = dict(candidate)
             match["Data"] = route_date
             match["Rota"] = route_row["Rota"]
