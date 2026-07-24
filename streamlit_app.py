@@ -6613,6 +6613,14 @@ def _render_peso_route_import() -> None:
                 st.write(f"...mais {len(match_errors) - 12} diferenca(s).")
             return
 
+        match_warnings = preview_result.get("warnings") or []
+        if match_warnings:
+            st.warning("Estas linhas nao possuem registro de Peso e serao ignoradas:")
+            for warning in match_warnings[:12]:
+                st.write(warning)
+            if len(match_warnings) > 12:
+                st.write(f"...mais {len(match_warnings) - 12} aviso(s).")
+
         matches = preview_result.get("matches") or []
         preview = pd.DataFrame(matches)
         if preview.empty:
@@ -6622,6 +6630,7 @@ def _render_peso_route_import() -> None:
         route_targets = len(
             {(str(row.get("Data")), str(row.get("PLACA"))) for row in rows}
         )
+        ignored_rows = max(len(rows) - len(preview), 0)
         preview_display = preview.rename(
             columns={
                 "RotaAtual": "Rota atual",
@@ -6666,7 +6675,11 @@ def _render_peso_route_import() -> None:
             hide_index=True,
         )
         if st.button(
-            f"Atualizar rota em {len(preview)} registro(s)",
+            (
+                f"Atualizar {len(preview)} registro(s) e ignorar {ignored_rows} linha(s)"
+                if ignored_rows
+                else f"Atualizar rota em {len(preview)} registro(s)"
+            ),
             type="primary",
             width="stretch",
             key="cad_peso_route_import_confirm",
@@ -6681,7 +6694,11 @@ def _render_peso_route_import() -> None:
             clear_cached_reads()
             st.session_state["cad_peso_route_upload_nonce"] = upload_nonce + 1
             st.session_state["cad_peso_route_last_success"] = (
-                f"{updated} registro(s) de peso atualizado(s). Os demais dados foram preservados."
+                f"{updated} registro(s) de peso atualizado(s). "
+                f"{max(len(rows) - updated, 0)} linha(s) sem correspondencia ignorada(s). "
+                "Os demais dados foram preservados."
+                if len(rows) > updated
+                else f"{updated} registro(s) de peso atualizado(s). Os demais dados foram preservados."
             )
             st.rerun()
 

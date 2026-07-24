@@ -740,7 +740,12 @@ def _peso_route_plate_match_key(value) -> str:
     return str(normalized).translate(str.maketrans({"I": "1", "L": "1", "O": "0", "Q": "0"}))
 
 
-def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[dict], list[str]]:
+def _match_peso_route_rows(
+    conn,
+    rows: list[dict],
+    *,
+    lock: bool,
+) -> tuple[list[dict], list[str], list[str]]:
     from sqlalchemy import text
 
     prepared = _prepare_peso_route_rows(rows)
@@ -751,6 +756,7 @@ def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[
     table = _quote_identifier(DB_TABLES["peso"])
     matches: list[dict] = []
     errors: list[str] = []
+    warnings: list[str] = []
     lock_sql = " FOR UPDATE" if lock else ""
     for (route_date, plate), route_rows in grouped.items():
         def load_candidates(candidate_plate: str):
@@ -814,9 +820,9 @@ def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[
                     if available_text
                     else " Nao ha placas cadastradas nessa data."
                 )
-                errors.append(
+                warnings.append(
                     f"{route_date.strftime('%d/%m/%Y')} - {plate}: nenhum registro de peso encontrado."
-                    f"{detail}"
+                    f"{detail} {len(route_rows)} linha(s) sera(ao) ignorada(s)."
                 )
                 continue
 
@@ -834,16 +840,16 @@ def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[
             match["PLACAInformada"] = plate
             match["Rota"] = route_row["Rota"]
             matches.append(match)
-    return matches, errors
+    return matches, errors, warnings
 
 
 def preview_peso_route_updates(rows: list[dict]) -> dict:
     engine = _db_engine()
     with engine.begin() as conn:
         _ensure_dataset_table(conn, "peso")
-        matches, errors = _match_peso_route_rows(conn, rows, lock=False)
+        matches, errors, warnings = _match_peso_route_rows(conn, rows, lock=False)
     public_matches = [{key: value for key, value in row.items() if key != "__row_id"} for row in matches]
-    return {"matches": public_matches, "errors": errors}
+    return {"matches": public_matches, "errors": errors, "warnings": warnings}
 
 
 def update_peso_routes(rows: list[dict]) -> int:
@@ -854,7 +860,7 @@ def update_peso_routes(rows: list[dict]) -> int:
     engine = _db_engine()
     with engine.begin() as conn:
         _ensure_dataset_table(conn, "peso")
-        matches, errors = _match_peso_route_rows(conn, rows, lock=True)
+        matches, errors, _warnings = _match_peso_route_rows(conn, rows, lock=True)
         if errors:
             raise ValueError("A importacao foi cancelada. " + " ".join(errors))
 
