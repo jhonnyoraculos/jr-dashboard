@@ -111,7 +111,7 @@ _HOTEIS_COLUMNS = [
 ]
 _PEDAGIO_COLUMNS = ["PLACA", "Tipo", "Custo", "Mes", "Data", "Categoria"]
 _PESO_COLUMNS = ["Data", "Mes", "Cidade", "Rota", "Peso", "Valor", "PLACA", "Categoria"]
-_PLACAS_COLUMNS = ["PLACA", "Categoria"]
+_PLACAS_COLUMNS = ["PLACA", "Categoria", "Diaria"]
 _PLATE_ALIASES = {
     "EUX6525": "EUX6F25",
 }
@@ -139,6 +139,7 @@ _COLUMN_SQL_TYPES = {
     "POSTOS": "TEXT",
     "PLACA": "TEXT",
     "Categoria": "TEXT",
+    "Diaria": "DOUBLE PRECISION",
     "Valor": "DOUBLE PRECISION",
     "Dias": "DOUBLE PRECISION",
     "Motorista": "TEXT",
@@ -414,6 +415,9 @@ def _prepare_insert_row(dataset: str, row: dict) -> dict:
         prepared["Combustivel"] = _normalize_combustivel_value(prepared["Combustivel"])
     if "Categoria" in prepared:
         prepared["Categoria"] = _normalize_category_value(prepared["Categoria"])
+    if "Diaria" in prepared:
+        diaria = pd.to_numeric(pd.Series([prepared["Diaria"]]), errors="coerce").iloc[0]
+        prepared["Diaria"] = max(float(diaria), 0.0) if pd.notna(diaria) else 0.0
     if prepared.get("PLACA") and _is_forklift_identifier(prepared["PLACA"]):
         prepared["Categoria"] = "Empilhadeira"
     elif prepared.get("PLACA") and _is_equipment_identifier(prepared["PLACA"]):
@@ -436,7 +440,8 @@ def _ensure_dataset_table(conn, dataset: str) -> None:
         "placas": f"""
             CREATE TABLE IF NOT EXISTS {_quote_identifier(DB_TABLES["placas"])} (
                 "PLACA" TEXT PRIMARY KEY,
-                "Categoria" TEXT NOT NULL
+                "Categoria" TEXT NOT NULL,
+                "Diaria" DOUBLE PRECISION
             )
             """,
         "combustiveis": f"""
@@ -498,9 +503,15 @@ def save_dashboard_record(dataset: str, row: dict, *, replace_keys: list[str] | 
             plate_registry_changed = True
             _ensure_dataset_table(conn, "placas")
             placas_table = _quote_identifier(DB_TABLES["placas"])
-            conn.execute(text(f"DELETE FROM {placas_table} WHERE \"PLACA\" = :placa"), {"placa": prepared["PLACA"]})
             conn.execute(
-                text(f"INSERT INTO {placas_table} (\"PLACA\", \"Categoria\") VALUES (:placa, :categoria)"),
+                text(
+                    f"""
+                    INSERT INTO {placas_table} ("PLACA", "Categoria")
+                    VALUES (:placa, :categoria)
+                    ON CONFLICT ("PLACA")
+                    DO UPDATE SET "Categoria" = EXCLUDED."Categoria"
+                    """
+                ),
                 {"placa": prepared["PLACA"], "categoria": prepared["Categoria"]},
             )
             _write_metadata(conn, "placas.version", version)
@@ -567,9 +578,15 @@ def replace_dashboard_records(dataset: str, rows: list[dict]) -> str:
             if dataset in {"combustivel", "manutencao", "pneus", "pedagio", "peso"} and prepared.get("PLACA") and prepared.get("Categoria"):
                 _ensure_dataset_table(conn, "placas")
                 placas_table = _quote_identifier(DB_TABLES["placas"])
-                conn.execute(text(f"DELETE FROM {placas_table} WHERE \"PLACA\" = :placa"), {"placa": prepared["PLACA"]})
                 conn.execute(
-                    text(f"INSERT INTO {placas_table} (\"PLACA\", \"Categoria\") VALUES (:placa, :categoria)"),
+                    text(
+                        f"""
+                        INSERT INTO {placas_table} ("PLACA", "Categoria")
+                        VALUES (:placa, :categoria)
+                        ON CONFLICT ("PLACA")
+                        DO UPDATE SET "Categoria" = EXCLUDED."Categoria"
+                        """
+                    ),
                     {"placa": prepared["PLACA"], "categoria": prepared["Categoria"]},
                 )
 
@@ -640,9 +657,15 @@ def append_dashboard_records(dataset: str, rows: list[dict], *, update_plate_reg
             if update_plate_registry and dataset in {"combustivel", "manutencao", "pneus", "pedagio", "peso"} and prepared.get("PLACA") and prepared.get("Categoria"):
                 _ensure_dataset_table(conn, "placas")
                 placas_table = _quote_identifier(DB_TABLES["placas"])
-                conn.execute(text(f"DELETE FROM {placas_table} WHERE \"PLACA\" = :placa"), {"placa": prepared["PLACA"]})
                 conn.execute(
-                    text(f"INSERT INTO {placas_table} (\"PLACA\", \"Categoria\") VALUES (:placa, :categoria)"),
+                    text(
+                        f"""
+                        INSERT INTO {placas_table} ("PLACA", "Categoria")
+                        VALUES (:placa, :categoria)
+                        ON CONFLICT ("PLACA")
+                        DO UPDATE SET "Categoria" = EXCLUDED."Categoria"
+                        """
+                    ),
                     {"placa": prepared["PLACA"], "categoria": prepared["Categoria"]},
                 )
 
@@ -1210,7 +1233,7 @@ def replace_pedagio_seguros_por_placa(
     return {"deleted": deleted, "inserted": inserted, "plates": len(normalized), "months": months}
 
 
-def rename_plate(old_plate, new_plate, categoria: str) -> str:
+def rename_plate(old_plate, new_plate, categoria: str, diaria: float | None = None) -> str:
     old_value = _normalize_plate_value(old_plate)
     new_value = _normalize_plate_value(new_plate)
     if not _is_plate_or_asset_identifier(old_value):
@@ -1225,6 +1248,23 @@ def rename_plate(old_plate, new_plate, categoria: str) -> str:
 
     with _db_engine().begin() as conn:
         _ensure_dataset_table(conn, "placas")
+        placas_table = _quote_identifier(DB_TABLES["placas"])
+        if diaria is None:
+            stored_daily = conn.execute(
+                text(
+                    f"""
+                    SELECT "Diaria"
+                    FROM {placas_table}
+                    WHERE "PLACA" IN (:old_plate, :new_plate)
+                    ORDER BY CASE WHEN "PLACA" = :old_plate THEN 0 ELSE 1 END
+                    LIMIT 1
+                    """
+                ),
+                {"old_plate": old_value, "new_plate": new_value},
+            ).scalar()
+            diaria_value = float(stored_daily or 0.0)
+        else:
+            diaria_value = max(float(diaria or 0.0), 0.0)
         for dataset in ("combustivel", "combustivel_km", "empilhadeira_horas", "manutencao", "pneus", "pedagio", "peso"):
             _ensure_dataset_table(conn, dataset)
             table = _quote_identifier(DB_TABLES[dataset])
@@ -1239,11 +1279,10 @@ def rename_plate(old_plate, new_plate, categoria: str) -> str:
                 )
             _write_metadata(conn, f"{dataset}.version", version)
 
-        placas_table = _quote_identifier(DB_TABLES["placas"])
         conn.execute(text(f"DELETE FROM {placas_table} WHERE \"PLACA\" IN (:old_plate, :new_plate)"), {"old_plate": old_value, "new_plate": new_value})
         conn.execute(
-            text(f"INSERT INTO {placas_table} (\"PLACA\", \"Categoria\") VALUES (:placa, :categoria)"),
-            {"placa": new_value, "categoria": categoria_value},
+            text(f"INSERT INTO {placas_table} (\"PLACA\", \"Categoria\", \"Diaria\") VALUES (:placa, :categoria, :diaria)"),
+            {"placa": new_value, "categoria": categoria_value, "diaria": diaria_value},
         )
         _write_metadata(conn, "placas.version", version)
         _write_metadata(conn, "import.version", version)
@@ -1433,6 +1472,7 @@ def _read_plate_registry() -> pd.DataFrame:
             df = df[_PLACAS_COLUMNS].copy()
             df["PLACA"] = _normalize_plate_series(df["PLACA"])
             _normalize_category_column(df)
+            df["Diaria"] = pd.to_numeric(df["Diaria"], errors="coerce").fillna(0.0).clip(lower=0)
             df = df.dropna(subset=["PLACA"]).drop_duplicates(subset=["PLACA"], keep="last")
             df = df[df["PLACA"].apply(_is_plate_or_asset_identifier)]
         else:
@@ -1502,6 +1542,7 @@ def _derived_plate_registry() -> pd.DataFrame:
             )
         )
     )
+    grouped["Diaria"] = 0.0
     return grouped.sort_values("PLACA").reset_index(drop=True)
 
 
@@ -1526,6 +1567,7 @@ def load_placas() -> pd.DataFrame:
         df = pd.concat(frames, ignore_index=True)
         df["PLACA"] = _normalize_plate_series(df["PLACA"])
         _normalize_category_column(df)
+        df["Diaria"] = pd.to_numeric(df["Diaria"], errors="coerce").fillna(0.0).clip(lower=0)
         df = df.dropna(subset=["PLACA"]).drop_duplicates(subset=["PLACA"], keep="last")
         df = df[df["PLACA"].apply(_is_plate_or_asset_identifier)]
         df = df[_PLACAS_COLUMNS].sort_values("PLACA").reset_index(drop=True)
@@ -2852,6 +2894,53 @@ def _ranking_count_by_plate(df: pd.DataFrame) -> dict[str, int]:
     return {str(placa): int(valor or 0) for placa, valor in grouped.items()}
 
 
+def _ranking_freighter_daily_rates(registry: pd.DataFrame | None = None) -> dict[str, float]:
+    if registry is None:
+        try:
+            registry = load_placas()
+        except Exception:
+            registry = _empty(_PLACAS_COLUMNS)
+    required = {"PLACA", "Categoria", "Diaria"}
+    if registry.empty or not required.issubset(registry.columns):
+        return {}
+
+    work = registry[["PLACA", "Categoria", "Diaria"]].copy()
+    work["Categoria"] = work["Categoria"].apply(_normalize_category_value)
+    work["Diaria"] = pd.to_numeric(work["Diaria"], errors="coerce").fillna(0.0).clip(lower=0)
+    work = work[(work["Categoria"] == "Freteiro") & (work["Diaria"] > 0)].dropna(subset=["PLACA"])
+    return {
+        str(placa).strip(): float(diaria)
+        for placa, diaria in work[["PLACA", "Diaria"]].itertuples(index=False)
+        if str(placa).strip()
+    }
+
+
+def _ranking_freighter_daily_costs(
+    df_peso: pd.DataFrame,
+    daily_rates: dict[str, float] | None = None,
+) -> pd.DataFrame:
+    columns = ["Data", "Mes", "PLACA", "Diaria", "Custo"]
+    if df_peso.empty or not {"Data", "PLACA"}.issubset(df_peso.columns):
+        return pd.DataFrame(columns=columns)
+
+    rates = daily_rates if daily_rates is not None else _ranking_freighter_daily_rates()
+    if not rates:
+        return pd.DataFrame(columns=columns)
+
+    work = df_peso[["Data", "PLACA"]].copy()
+    work["Data"] = pd.to_datetime(work["Data"], errors="coerce").dt.normalize()
+    work["PLACA"] = work["PLACA"].astype("string").str.strip()
+    work = work.dropna(subset=["Data", "PLACA"])
+    work = work[(work["PLACA"] != "") & work["PLACA"].isin(rates)].drop_duplicates(["Data", "PLACA"])
+    if work.empty:
+        return pd.DataFrame(columns=columns)
+
+    work["Mes"] = work["Data"].dt.to_period("M").astype("string")
+    work["Diaria"] = work["PLACA"].map(rates).fillna(0.0)
+    work["Custo"] = work["Diaria"]
+    return work[columns].sort_values(["Data", "PLACA"]).reset_index(drop=True)
+
+
 def _ranking_monthly_sum(frames: list[tuple[pd.DataFrame, str]], value_name: str) -> dict:
     monthly: dict[str, float] = defaultdict(float)
     for df, value_col in frames:
@@ -3081,8 +3170,12 @@ def data_frota(params: dict | None = None) -> dict:
     total_ped = _ranking_sum_by_plate(df_ped, "Custo")
     peso_map = _ranking_sum_by_plate(df_peso, "Peso")
     valor_peso_map = _ranking_sum_by_plate(df_peso, "Valor")
+    daily_rates = _ranking_freighter_daily_rates()
+    df_diarias = _ranking_freighter_daily_costs(df_peso, daily_rates)
+    gasto_diarias_map = _ranking_sum_by_plate(df_diarias, "Custo")
+    dias_trabalhados_map = _ranking_count_by_plate(df_diarias)
     total_hoteis = float(pd.to_numeric(df_hoteis_period.get("Valor"), errors="coerce").fillna(0).sum()) if incluir_hoteis and "Valor" in df_hoteis_period.columns else 0.0
-    mensal_total_frames = [(df_comb, "Custo"), (df_manu, "Custo"), (df_ped, "Custo")]
+    mensal_total_frames = [(df_comb, "Custo"), (df_manu, "Custo"), (df_ped, "Custo"), (df_diarias, "Custo")]
     if incluir_hoteis:
         mensal_total_frames.append((df_hoteis_period, "Valor"))
     mensal_total = _ranking_monthly_sum(mensal_total_frames, "Valor")
@@ -3095,26 +3188,33 @@ def data_frota(params: dict | None = None) -> dict:
     servicos_map = _ranking_count_by_plate(df_manu)
     pedagio_count_map = _ranking_count_by_plate(df_ped)
 
-    placa_set = set(total_comb) | set(total_manu) | set(total_ped) | set(litros_map) | set(km_override_map) | set(peso_map)
+    placa_set = set(total_comb) | set(total_manu) | set(total_ped) | set(litros_map) | set(km_override_map) | set(peso_map) | set(gasto_diarias_map)
     ranking = []
     for placa in sorted(placa_set):
+        categoria = category_map.get(placa, "Transporte")
         combustivel_total = total_comb.get(placa, 0.0)
         manutencao_total = total_manu.get(placa, 0.0)
         pedagio_total = total_ped.get(placa, 0.0)
         peso_total = peso_map.get(placa, 0.0)
         valor_peso_total = valor_peso_map.get(placa, 0.0)
-        total = combustivel_total + manutencao_total + pedagio_total
+        diaria = daily_rates.get(placa, 0.0) if _normalize_category_value(categoria) == "Freteiro" else 0.0
+        dias_trabalhados = dias_trabalhados_map.get(placa, 0)
+        gasto_diarias = gasto_diarias_map.get(placa, 0.0)
+        total = combustivel_total + manutencao_total + pedagio_total + gasto_diarias
         km_total = km_override_map.get(placa, 0.0)
         litros_total = litros_map.get(placa, 0.0)
         lancamentos = abastecimentos_map.get(placa, 0) + servicos_map.get(placa, 0) + pedagio_count_map.get(placa, 0)
         ranking.append(
             {
                 "placa": placa,
-                "categoria": category_map.get(placa, "Transporte"),
+                "categoria": categoria,
                 "total": round(total, 2),
                 "combustivel": round(combustivel_total, 2),
                 "manutencao": round(manutencao_total, 2),
                 "pedagio": round(pedagio_total, 2),
+                "diaria": round(diaria, 2),
+                "dias_trabalhados": dias_trabalhados,
+                "gasto_diarias": round(gasto_diarias, 2),
                 "peso_total": round(peso_total, 3),
                 "valor_peso": round(valor_peso_total, 2),
                 "km_total": round(km_total, 2),
@@ -3130,14 +3230,17 @@ def data_frota(params: dict | None = None) -> dict:
             }
         )
 
-    sort_key = {
+    sort_keys = {
         "total": "total",
         "combustivel": "combustivel",
         "manutencao": "manutencao",
         "pedagio": "pedagio",
+        "diarias": "gasto_diarias",
         "peso": "peso_total",
         "valor_entregas": "valor_peso",
-    }.get(ordenar_por, "combustivel")
+    }
+    sort_selection = ordenar_por if ordenar_por in sort_keys else "combustivel"
+    sort_key = sort_keys[sort_selection]
     ranking.sort(key=lambda row: (row.get(sort_key, 0.0), row.get("total", 0.0), row.get("placa", "")), reverse=True)
     for index, row in enumerate(ranking, start=1):
         row["rank"] = index
@@ -3156,7 +3259,7 @@ def data_frota(params: dict | None = None) -> dict:
         "categorias": sorted(categorias),
         "rotas": rotas_disponiveis,
         "placas": placas_disponiveis,
-        "ordenar_por": sort_key,
+        "ordenar_por": sort_selection,
         "ranking": ranking,
         "dominancia_peso": dominancia_peso,
         "mensal_total": mensal_total,
@@ -3170,6 +3273,8 @@ def data_frota(params: dict | None = None) -> dict:
             "combustivel": round(sum(row["combustivel"] for row in ranking), 2),
             "manutencao": round(sum(row["manutencao"] for row in ranking), 2),
             "pedagio": round(sum(row["pedagio"] for row in ranking), 2),
+            "gasto_diarias": round(sum(row["gasto_diarias"] for row in ranking), 2),
+            "dias_trabalhados": sum(row["dias_trabalhados"] for row in ranking),
             "hoteis": round(total_hoteis, 2),
             "inclui_hoteis": incluir_hoteis,
             "peso_total": round(sum(row["peso_total"] for row in ranking), 3),

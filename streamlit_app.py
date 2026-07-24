@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-empilhadeiras-horas-v1"
+APP_VERSION = "deploy-freteiros-diarias-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -127,6 +127,7 @@ RANK_ORDER_OPTIONS = {
     "combustivel": "Combustível",
     "manutencao": "Manutenção",
     "pedagio": "Pedágio/Extras",
+    "diarias": "Diárias",
     "peso": "Peso",
     "valor_entregas": "Valor entregas",
 }
@@ -4236,7 +4237,7 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
     }
 
 
-def ranking_summary_html(row: dict, *, hide_fuel: bool = False) -> str:
+def ranking_summary_html(row: dict, *, hide_fuel: bool = False, show_daily: bool = False) -> str:
     items = [
         ("Posição", f"#{int(row.get('rank') or 0):02d}"),
         ("Placa", row.get("placa") or "Sem placa"),
@@ -4245,6 +4246,11 @@ def ranking_summary_html(row: dict, *, hide_fuel: bool = False) -> str:
         ("Pedágio/Extras", fmt_brl_big(row.get("pedagio"))),
         ("Peso", fmt_peso(row.get("peso_total"))),
     ]
+    if show_daily and str(row.get("categoria") or "") == "Freteiro":
+        items[3:3] = [
+            ("Gasto com diárias", fmt_brl_big(row.get("gasto_diarias"))),
+            ("Dias trabalhados", fmt_num(row.get("dias_trabalhados"))),
+        ]
     if not hide_fuel:
         items.insert(3, ("Combustível", fmt_brl_big(row.get("combustivel"))))
     return "".join(
@@ -4253,7 +4259,7 @@ def ranking_summary_html(row: dict, *, hide_fuel: bool = False) -> str:
     )
 
 
-def ranking_detail_html(row: dict, *, hide_fuel: bool = False) -> str:
+def ranking_detail_html(row: dict, *, hide_fuel: bool = False, show_daily: bool = False) -> str:
     items = [
         ("Gasto total", fmt_brl_big(row.get("total"))),
         ("Manutenção", fmt_brl_big(row.get("manutencao"))),
@@ -4263,6 +4269,12 @@ def ranking_detail_html(row: dict, *, hide_fuel: bool = False) -> str:
         ("Serviços", fmt_num(row.get("servicos"))),
         ("Pedágio/Extras", fmt_num(row.get("despesas_pedagio"))),
     ]
+    if show_daily and str(row.get("categoria") or "") == "Freteiro":
+        items[1:1] = [
+            ("Valor da diária", fmt_brl_big(row.get("diaria"))),
+            ("Dias trabalhados", fmt_num(row.get("dias_trabalhados"))),
+            ("Gasto com diárias", fmt_brl_big(row.get("gasto_diarias"))),
+        ]
     if not hide_fuel:
         items[1:1] = [
             ("Combustível", fmt_brl_big(row.get("combustivel"))),
@@ -4278,10 +4290,10 @@ def ranking_detail_html(row: dict, *, hide_fuel: bool = False) -> str:
         f'<div class="ranking-detail-card"><p class="ranking-detail-label">{h(label)}</p><p class="ranking-detail-value">{h(value)}</p></div>'
         for label, value in items
     )
-    return f'<div class="ranking-row-summary">{ranking_summary_html(row, hide_fuel=hide_fuel)}</div><div class="ranking-detail-grid">{cards}</div>'
+    return f'<div class="ranking-row-summary">{ranking_summary_html(row, hide_fuel=hide_fuel, show_daily=show_daily)}</div><div class="ranking-detail-grid">{cards}</div>'
 
 
-def ranking_row_label(row: dict, *, hide_fuel: bool = False) -> str:
+def ranking_row_label(row: dict, *, hide_fuel: bool = False, show_daily: bool = False) -> str:
     def money(value: object) -> str:
         return fmt_brl_big(value).replace("$", r"\$")
 
@@ -4292,6 +4304,11 @@ def ranking_row_label(row: dict, *, hide_fuel: bool = False) -> str:
         f"Pedagio/Extras {money(row.get('pedagio'))}",
         f"Peso {fmt_peso(row.get('peso_total'))}",
     ]
+    if show_daily and str(row.get("categoria") or "") == "Freteiro":
+        parts.insert(
+            2,
+            f"Diarias {money(row.get('gasto_diarias'))} ({fmt_num(row.get('dias_trabalhados'))} dias)",
+        )
     if not hide_fuel:
         parts.insert(2, f"Combustivel {money(row.get('combustivel'))}")
         parts.extend([f"KM {fmt_num(row.get('km_total'))}", f"Litros {fmt_num(row.get('litros_total'))}"])
@@ -4305,7 +4322,7 @@ def _ranking_float(row: dict, key: str) -> float:
         return 0.0
 
 
-def ranking_difference_html(rows: list[dict], *, hide_fuel: bool = False) -> str:
+def ranking_difference_html(rows: list[dict], *, hide_fuel: bool = False, show_daily: bool = False) -> str:
     if len(rows) < 2:
         return ""
     metrics = [
@@ -4314,6 +4331,11 @@ def ranking_difference_html(rows: list[dict], *, hide_fuel: bool = False) -> str
         ("Pedágio/Extras", "pedagio", fmt_brl_big),
         ("Peso", "peso_total", fmt_peso),
     ]
+    if show_daily:
+        metrics[1:1] = [
+            ("Gasto com diárias", "gasto_diarias", fmt_brl_big),
+            ("Dias trabalhados", "dias_trabalhados", fmt_num),
+        ]
     if not hide_fuel:
         metrics[1:1] = [
             ("Combustível", "combustivel", fmt_brl_big),
@@ -4341,7 +4363,7 @@ def ranking_difference_html(rows: list[dict], *, hide_fuel: bool = False) -> str
     )
 
 
-def ranking_versus_html(rows: list[dict], *, hide_fuel: bool = False) -> str:
+def ranking_versus_html(rows: list[dict], *, hide_fuel: bool = False, show_daily: bool = False) -> str:
     metrics = [
         ("Total", "total", fmt_brl_big),
         ("Manutenção", "manutencao", fmt_brl_big),
@@ -4349,6 +4371,12 @@ def ranking_versus_html(rows: list[dict], *, hide_fuel: bool = False) -> str:
         ("Peso", "peso_total", fmt_peso),
         ("Valor entregas", "valor_peso", fmt_brl_big),
     ]
+    if show_daily:
+        metrics[1:1] = [
+            ("Valor da diária", "diaria", fmt_brl_big),
+            ("Dias trabalhados", "dias_trabalhados", fmt_num),
+            ("Gasto com diárias", "gasto_diarias", fmt_brl_big),
+        ]
     if not hide_fuel:
         metrics[1:1] = [
             ("Combustível", "combustivel", fmt_brl_big),
@@ -4503,9 +4531,16 @@ def render_frota() -> None:
     selected_routes = [str(item) for item in (params.get("rota") or []) if item not in (None, "", "Todos")]
     freteiro_mode = selected_categories == ["Freteiro"]
     include_hoteis = bool(totais.get("inclui_hoteis") or params.get("incluir_hoteis"))
+    ranking = data.get("ranking", []) or []
+    show_daily = (
+        freteiro_mode
+        or float(totais.get("gasto_diarias") or 0) > 0
+        or any(float(row.get("diaria") or 0) > 0 for row in ranking)
+    )
     if selected_routes:
         st.caption(
-            "Somente os custos de combustivel e pedagio foram ligados por data e placa e rateados por rota. "
+            "Os custos de combustivel e pedagio foram ligados por data e placa e rateados por rota. "
+            "As diarias contam os dias em que cada Freteiro aparece na rota selecionada. "
             "Litros, KM e KM/L continuam usando os dados gerais da placa no periodo."
         )
 
@@ -4518,6 +4553,11 @@ def render_frota() -> None:
         ("Peso total", fmt_peso(totais.get("peso_total")), JR_BLUE),
         ("Ordenado por", order_label, JR_BLUE),
     ]
+    if show_daily:
+        kpi_items[2:2] = [
+            ("Gasto com diárias", fmt_brl_big(totais.get("gasto_diarias")), "#7C3AED"),
+            ("Dias trabalhados", fmt_num(totais.get("dias_trabalhados")), "#7C3AED"),
+        ]
     if not freteiro_mode:
         kpi_items[2:2] = [
             ("Combustível", fmt_brl_big(totais.get("combustivel")), JR_BLUE),
@@ -4530,10 +4570,9 @@ def render_frota() -> None:
     with st.container(key="frota_kpis"):
         render_kpis(kpi_items)
 
-    ranking = data.get("ranking", []) or []
     if not ranking:
         st.markdown('<div class="ranking-empty">Nenhum caminhão encontrado para os filtros selecionados.</div>', unsafe_allow_html=True)
-        footer("Ranking calculado com dados de combustível, manutenção e pedágio/extras do Neon. © JR")
+        footer("Ranking calculado com dados de combustível, manutenção, diárias e pedágio/extras do Neon. © JR")
         return
 
     selected_plates = [str(item) for item in (params.get("placa") or []) if item not in (None, "", "Todos")]
@@ -4541,7 +4580,10 @@ def render_frota() -> None:
     if len(selected_plates) >= 2:
         selected_set = set(selected_plates)
         versus_rows = [row for row in ranking if row.get("placa") in selected_set]
-        st.html(ranking_difference_html(versus_rows, hide_fuel=freteiro_mode) + ranking_versus_html(versus_rows, hide_fuel=freteiro_mode))
+        st.html(
+            ranking_difference_html(versus_rows, hide_fuel=freteiro_mode, show_daily=show_daily)
+            + ranking_versus_html(versus_rows, hide_fuel=freteiro_mode, show_daily=show_daily)
+        )
 
     include_year = params.get("ano") is None
     fallback_year = params.get("ano")
@@ -4637,6 +4679,8 @@ def render_frota() -> None:
             st.markdown(dominance_route_ranking_html(rotas_dominadas), unsafe_allow_html=True)
 
     header_columns = ["#", "Placa", "Total", "Manutencao", "Pedagio/Extras", "Peso"]
+    if show_daily:
+        header_columns[3:3] = ["Diarias"]
     if not freteiro_mode:
         header_columns[3:3] = ["Combustivel"]
         header_columns.extend(["KM", "Litros"])
@@ -4646,9 +4690,9 @@ def render_frota() -> None:
     )
     with st.container(key="frota_ranking_table"):
         for row in ranking:
-            with st.expander(ranking_row_label(row, hide_fuel=freteiro_mode), expanded=False):
-                st.html(ranking_detail_html(row, hide_fuel=freteiro_mode))
-    footer("Ranking calculado com dados de combustível, manutenção e pedágio/extras do Neon. © JR")
+            with st.expander(ranking_row_label(row, hide_fuel=freteiro_mode, show_daily=show_daily), expanded=False):
+                st.html(ranking_detail_html(row, hide_fuel=freteiro_mode, show_daily=show_daily))
+    footer("Ranking calculado com dados de combustível, manutenção, diárias e pedágio/extras do Neon. © JR")
 
 
 def render_home() -> None:
@@ -4919,8 +4963,28 @@ def _registered_plate_map() -> dict[str, str]:
     return dict(sorted(mapping.items()))
 
 
-def _plate_editor_token(plate_map: dict[str, str]) -> str:
-    raw = "|".join(f"{placa}:{categoria}" for placa, categoria in sorted(plate_map.items()))
+def _registered_plate_daily_map() -> dict[str, float]:
+    try:
+        df = backend.load_placas()
+    except Exception:
+        return {}
+    if df.empty or "PLACA" not in df.columns or "Diaria" not in df.columns:
+        return {}
+    rates: dict[str, float] = {}
+    for _, row in df.iterrows():
+        placa = clean_text(row.get("PLACA")).strip().upper()
+        diaria = _parse_brl_number(row.get("Diaria")) or 0.0
+        if placa:
+            rates[placa] = max(float(diaria), 0.0)
+    return dict(sorted(rates.items()))
+
+
+def _plate_editor_token(plate_map: dict[str, str], daily_map: dict[str, float] | None = None) -> str:
+    daily_map = daily_map or {}
+    raw = "|".join(
+        f"{placa}:{categoria}:{daily_map.get(placa, 0.0):.2f}"
+        for placa, categoria in sorted(plate_map.items())
+    )
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
 
 
@@ -4944,7 +5008,8 @@ def _filter_plate_table(table: pd.DataFrame, editor_token: str) -> pd.DataFrame:
     if not search.strip():
         return table
     needle = search.strip().lower()
-    searchable = table[["Placa atual", "Placa", "Categoria"]].astype("string").fillna("").apply(lambda col: col.str.lower())
+    search_columns = [column for column in ["Placa atual", "Placa", "Categoria", "Diaria (R$)"] if column in table.columns]
+    searchable = table[search_columns].astype("string").fillna("").apply(lambda col: col.str.lower())
     mask = searchable.apply(lambda row: any(needle in value for value in row), axis=1)
     return table.loc[mask].copy()
 
@@ -5027,7 +5092,12 @@ def _save_registered_plate(placa: str, categoria: str) -> bool:
         st.warning("Selecione ou cadastre uma placa.")
         return False
     try:
-        backend.save_dashboard_record("placas", {"PLACA": placa, "Categoria": categoria}, replace_keys=["PLACA"])
+        diaria = _registered_plate_daily_map().get(clean_text(placa).strip().upper(), 0.0)
+        backend.save_dashboard_record(
+            "placas",
+            {"PLACA": placa, "Categoria": categoria, "Diaria": diaria},
+            replace_keys=["PLACA"],
+        )
     except Exception as exc:
         st.error("Não foi possível salvar a placa no Neon.")
         st.exception(exc)
@@ -5067,13 +5137,19 @@ def _edit_registered_plate(old_plate: str, new_plate: str, categoria: str) -> bo
     return True
 
 
-def _save_plate_sheet(original_map: dict[str, str], edited: pd.DataFrame) -> bool:
+def _save_plate_sheet(
+    original_map: dict[str, str],
+    edited: pd.DataFrame,
+    original_daily_map: dict[str, float] | None = None,
+) -> bool:
     if edited is None or edited.empty:
         st.warning("Informe pelo menos uma placa.")
         return False
 
     rows = []
     final_categories: dict[str, str] = {}
+    final_daily_rates: dict[str, float] = {}
+    original_daily_map = original_daily_map or {}
     for _, row in edited.iterrows():
         old_plate = clean_text(row.get("Placa atual")).strip().upper()
         new_plate = clean_text(row.get("Placa")).strip().upper()
@@ -5094,7 +5170,14 @@ def _save_plate_sheet(original_map: dict[str, str], edited: pd.DataFrame) -> boo
             categoria_final = "Equipamento"
         else:
             categoria_final = "Transporte"
+        diaria = _parse_brl_number(row.get("Diaria (R$)")) or 0.0
+        if diaria < 0:
+            st.warning(f"A diaria de {new_plate} nao pode ser negativa.")
+            return False
+        if categoria_final != "Freteiro":
+            diaria = 0.0
         final_categories[new_plate] = categoria_final
+        final_daily_rates[new_plate] = round(float(diaria), 2)
         rows.append((old_plate, new_plate))
 
     if not rows:
@@ -5105,13 +5188,22 @@ def _save_plate_sheet(original_map: dict[str, str], edited: pd.DataFrame) -> boo
     try:
         for old_plate, new_plate in rows:
             categoria = final_categories.get(new_plate, "Transporte")
+            diaria = final_daily_rates.get(new_plate, 0.0)
             if old_plate:
-                if old_plate == new_plate and original_map.get(old_plate, "Transporte") == categoria:
+                if (
+                    old_plate == new_plate
+                    and original_map.get(old_plate, "Transporte") == categoria
+                    and round(float(original_daily_map.get(old_plate, 0.0)), 2) == diaria
+                ):
                     continue
-                backend.rename_plate(old_plate, new_plate, categoria)
+                backend.rename_plate(old_plate, new_plate, categoria, diaria)
                 changed = True
             else:
-                backend.save_dashboard_record("placas", {"PLACA": new_plate, "Categoria": categoria}, replace_keys=["PLACA"])
+                backend.save_dashboard_record(
+                    "placas",
+                    {"PLACA": new_plate, "Categoria": categoria, "Diaria": diaria},
+                    replace_keys=["PLACA"],
+                )
                 changed = True
     except Exception as exc:
         st.error("NÃ£o foi possÃ­vel salvar a tabela de placas no Neon.")
@@ -7268,7 +7360,7 @@ def render_cadastro() -> None:
 
         if active_tab == "Placas":
             with st.form("form_placas", clear_on_submit=True):
-                c1, c2, c3 = st.columns([1.2, 1.0, 1.0])
+                c1, c2, c3, c4 = st.columns([1.2, 1.0, 1.0, 1.0])
                 with c1:
                     placa = st.text_input("Placa", placeholder="ABC1D23", key="cad_placa_nome").upper()
                 with c2:
@@ -7277,26 +7369,45 @@ def render_cadastro() -> None:
                         st.session_state["cad_placa_categoria"] = "Empilhadeira"
                     categoria = st.selectbox("Categoria", CATEGORY_OPTIONS, index=CATEGORY_OPTIONS.index(default_categoria), key="cad_placa_categoria")
                 with c3:
+                    diaria = st.number_input(
+                        "Diária do freteiro (R$)",
+                        min_value=0.0,
+                        step=10.0,
+                        format="%.2f",
+                        key="cad_placa_diaria",
+                        help="Esse valor será cobrado uma vez por dia em que a placa Freteiro aparecer nas entregas.",
+                    )
+                with c4:
                     st.write("")
                     submitted = st.form_submit_button("Cadastrar placa", type="primary", width="stretch")
                 if submitted:
                     _save_entry(
                         "placas",
-                        {"PLACA": placa, "Categoria": categoria},
+                        {
+                            "PLACA": placa,
+                            "Categoria": categoria,
+                            "Diaria": diaria if categoria == "Freteiro" else 0.0,
+                        },
                         required=["PLACA", "Categoria"],
                         replace_keys=["PLACA"],
                         success="Placa cadastrada/atualizada.",
                     )
 
             plate_map = _registered_plate_map()
+            plate_daily_map = _registered_plate_daily_map()
             if plate_map:
-                editor_token = _plate_editor_token(plate_map)
+                editor_token = _plate_editor_token(plate_map, plate_daily_map)
                 editor_nonce = st.session_state.get("cad_placas_editor_nonce", 0)
                 editor_key = f"cad_placas_editor_{editor_token}_{editor_nonce}"
                 _clear_stale_plate_editor_state(editor_key)
                 table = pd.DataFrame(
                     [
-                        {"Placa atual": placa, "Placa": placa, "Categoria": categoria}
+                        {
+                            "Placa atual": placa,
+                            "Placa": placa,
+                            "Categoria": categoria,
+                            "Diaria (R$)": plate_daily_map.get(placa, 0.0),
+                        }
                         for placa, categoria in plate_map.items()
                     ]
                 )
@@ -7315,12 +7426,19 @@ def render_cadastro() -> None:
                             options=CATEGORY_OPTIONS,
                             required=True,
                         ),
+                        "Diaria (R$)": st.column_config.NumberColumn(
+                            "Diária (R$)",
+                            min_value=0.0,
+                            step=10.0,
+                            format="R$ %.2f",
+                            help="Usada somente nas placas da categoria Freteiro.",
+                        ),
                     },
                     key=editor_key,
                 )
                 save_key = f"cad_placas_sheet_save_{editor_token}_{editor_nonce}"
                 if st.button("Salvar tabela de placas", type="primary", width="stretch", key=save_key):
-                    _save_plate_sheet(plate_map, edited_plates)
+                    _save_plate_sheet(plate_map, edited_plates, plate_daily_map)
             else:
                 st.info("Cadastre a primeira placa para liberar a edição.")
 
