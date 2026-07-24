@@ -5657,6 +5657,7 @@ PESO_SHEET_ALIASES = {
 
 PESO_ROUTE_SHEET_ALIASES = {
     "DATA": ["DATA", "DT"],
+    "PLACA": ["PLACA", "PLACAS"],
     "ROTA": ["ROTA"],
 }
 
@@ -6241,7 +6242,7 @@ def _peso_route_rows_from_sheet(df: pd.DataFrame) -> tuple[list[dict], list[str]
         field: next((header_map[key] for key in aliases if key in header_map), None)
         for field, aliases in PESO_ROUTE_SHEET_ALIASES.items()
     }
-    missing = [field for field in ("DATA", "ROTA") if resolved.get(field) is None]
+    missing = [field for field in ("DATA", "PLACA", "ROTA") if resolved.get(field) is None]
     if missing:
         return [], [f"Colunas faltando: {', '.join(missing)}."]
 
@@ -6249,13 +6250,18 @@ def _peso_route_rows_from_sheet(df: pd.DataFrame) -> tuple[list[dict], list[str]
     errors: list[str] = []
     for idx, row in df.iterrows():
         data_info = _parse_sheet_date(row.get(resolved["DATA"]))
+        placa_raw = _sheet_text(row, resolved.get("PLACA"), upper=True)
+        placa_normalizada = backend._normalize_plate_value(placa_raw)
+        placa = "" if pd.isna(placa_normalizada) else str(placa_normalizada)
         rota = _sheet_text(row, resolved.get("ROTA"), upper=True)
-        if data_info is None and not rota:
+        if data_info is None and not placa and not rota:
             continue
 
         missing_row = []
         if data_info is None:
             missing_row.append("DATA")
+        if not placa:
+            missing_row.append("PLACA")
         if not rota:
             missing_row.append("ROTA")
         if missing_row:
@@ -6263,7 +6269,7 @@ def _peso_route_rows_from_sheet(df: pd.DataFrame) -> tuple[list[dict], list[str]
             continue
 
         data, _ = data_info
-        rows.append({"Data": data, "Rota": rota})
+        rows.append({"Data": data, "PLACA": placa, "Rota": rota})
     return rows, errors
 
 
@@ -6512,17 +6518,17 @@ def _render_peso_route_import() -> None:
 
     with st.expander("Importar somente rotas", expanded=False):
         st.info(
-            "A rota informada sera aplicada a todos os registros de Peso daquela data. "
+            "A rota informada sera aplicada aos registros de Peso daquela data e placa. "
             "Somente a coluna Rota sera alterada; os demais dados permanecem como estao."
         )
         st.caption(
-            "Use uma linha por data, com as colunas DATA e ROTA. "
-            "Se a mesma data aparecer mais de uma vez, a rota precisa ser igual."
+            "Use as colunas DATA, PLACA e ROTA. "
+            "A mesma data pode ter rotas diferentes quando as placas forem diferentes."
         )
         _render_sheet_downloads(
             backend.load_peso_route_template,
-            [("Data", "DATA"), ("Rota", "ROTA")],
-            {"DATA": date.today(), "ROTA": "ROTA EXEMPLO"},
+            [("Data", "DATA"), ("PLACA", "PLACA"), ("Rota", "ROTA")],
+            {"DATA": date.today(), "PLACA": "ABC1D23", "ROTA": "ROTA EXEMPLO"},
             key_prefix="cad_peso_route_sheet",
             file_prefix="rotas_peso",
             sheet_name="Rotas",
@@ -6560,7 +6566,7 @@ def _render_peso_route_import() -> None:
             preview_result = backend.preview_peso_route_updates(rows)
         except Exception as exc:
             st.error("Nao foi possivel conferir as rotas com os pesos cadastrados.")
-            st.exception(exc)
+            st.warning(clean_text(exc))
             return
 
         match_errors = preview_result.get("errors") or []
@@ -6578,13 +6584,15 @@ def _render_peso_route_import() -> None:
             st.warning("Nao ha registros de peso correspondentes a esta planilha.")
             return
 
-        route_dates = len({str(row.get("Data")) for row in rows})
+        route_targets = len(
+            {(str(row.get("Data")), str(row.get("PLACA"))) for row in rows}
+        )
         preview_display = preview.rename(
             columns={"RotaAtual": "Rota atual", "Rota": "Nova rota", "PLACA": "Placa"}
         )
         preview_columns = ["Data", "Rota atual", "Nova rota", "Placa", "Cidade", "Peso", "Valor"]
         st.success(
-            f"{route_dates} data(s) conferida(s). "
+            f"{route_targets} combinacao(oes) de data e placa conferida(s). "
             f"A rota sera aplicada a {len(preview)} registro(s) de peso."
         )
         st.dataframe(
@@ -6602,7 +6610,7 @@ def _render_peso_route_import() -> None:
                 updated = backend.update_peso_routes(rows)
             except Exception as exc:
                 st.error("Nao foi possivel atualizar as rotas no Neon. Nenhum dado foi apagado.")
-                st.exception(exc)
+                st.warning(clean_text(exc))
                 return
             _reset_dataset_editor("cad_peso_table")
             clear_cached_reads()

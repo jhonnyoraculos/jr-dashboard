@@ -684,7 +684,7 @@ def append_dashboard_records(dataset: str, rows: list[dict], *, update_plate_reg
 
 
 def load_peso_route_template() -> pd.DataFrame:
-    """Return one route row per date registered in peso."""
+    """Return one route row per date and plate registered in peso."""
     from sqlalchemy import text
 
     table = _quote_identifier(DB_TABLES["peso"])
@@ -698,6 +698,7 @@ def load_peso_route_template() -> pd.DataFrame:
                 SELECT
                     CAST("Data" AS DATE) AS "Data",
                     TO_CHAR(CAST("Data" AS DATE), 'YYYY-MM') AS "Mes",
+                    "PLACA",
                     CASE
                         WHEN COUNT(DISTINCT NULLIF(TRIM("Rota"), '')) = 1
                         THEN MAX(NULLIF(TRIM("Rota"), ''))
@@ -705,8 +706,9 @@ def load_peso_route_template() -> pd.DataFrame:
                     END AS "Rota"
                 FROM {table}
                 WHERE "Data" IS NOT NULL
-                GROUP BY CAST("Data" AS DATE)
-                ORDER BY CAST("Data" AS DATE)
+                  AND COALESCE(TRIM("PLACA"), '') <> ''
+                GROUP BY CAST("Data" AS DATE), "PLACA"
+                ORDER BY CAST("Data" AS DATE), "PLACA"
                 """
             ),
             engine,
@@ -715,26 +717,32 @@ def load_peso_route_template() -> pd.DataFrame:
         raise RuntimeError("Nao foi possivel carregar as datas de peso no Neon.") from exc
 
     df["Data"] = pd.to_datetime(df.get("Data"), errors="coerce")
-    return df[["Data", "Mes", "Rota"]].copy()
+    return df[["Data", "Mes", "PLACA", "Rota"]].copy()
 
 
 def _prepare_peso_route_rows(rows: list[dict]) -> list[dict]:
-    prepared_by_date: dict[object, dict] = {}
+    prepared_by_target: dict[tuple[object, str], dict] = {}
     for index, row in enumerate(rows, start=2):
         parsed_date = pd.to_datetime(row.get("Data"), dayfirst=True, errors="coerce")
+        normalized_plate = _normalize_plate_value(row.get("PLACA"))
+        plate = "" if pd.isna(normalized_plate) else str(normalized_plate).strip()
         route = str(row.get("Rota") or "").strip().upper()
         if pd.isna(parsed_date):
             raise ValueError(f"Linha {index}: data invalida.")
+        if not plate:
+            raise ValueError(f"Linha {index}: placa nao preenchida.")
         if not route:
             raise ValueError(f"Linha {index}: rota nao preenchida.")
         route_date = parsed_date.date()
-        previous = prepared_by_date.get(route_date)
+        target = (route_date, plate)
+        previous = prepared_by_target.get(target)
         if previous and previous["Rota"] != route:
             raise ValueError(
-                f"Data {route_date.strftime('%d/%m/%Y')}: existem rotas diferentes na mesma planilha."
+                f"Data {route_date.strftime('%d/%m/%Y')} e placa {plate}: "
+                "existem rotas diferentes na mesma planilha."
             )
-        prepared_by_date[route_date] = {"Data": route_date, "Rota": route}
-    prepared = list(prepared_by_date.values())
+        prepared_by_target[target] = {"Data": route_date, "PLACA": plate, "Rota": route}
+    prepared = list(prepared_by_target.values())
     if not prepared:
         raise ValueError("Nenhuma rota valida para importar.")
     return prepared
@@ -750,6 +758,7 @@ def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[
     lock_sql = " FOR UPDATE" if lock else ""
     for route_row in prepared:
         route_date = route_row["Data"]
+        plate = route_row["PLACA"]
         candidates = conn.execute(
             text(
                 f"""
@@ -764,16 +773,17 @@ def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[
                     "Rota" AS "RotaAtual"
                 FROM {table}
                 WHERE CAST("Data" AS DATE) = :route_date
+                  AND "PLACA" = :plate
                 ORDER BY ctid
                 {lock_sql}
                 """
             ),
-            {"route_date": route_date},
+            {"route_date": route_date, "plate": plate},
         ).mappings().all()
 
         if not candidates:
             errors.append(
-                f"{route_date.strftime('%d/%m/%Y')}: nenhum registro de peso encontrado."
+                f"{route_date.strftime('%d/%m/%Y')} - {plate}: nenhum registro de peso encontrado."
             )
             continue
 
