@@ -110,7 +110,7 @@ _HOTEIS_COLUMNS = [
     "Categoria",
 ]
 _PEDAGIO_COLUMNS = ["PLACA", "Tipo", "Custo", "Mes", "Data", "Categoria"]
-_PESO_COLUMNS = ["Data", "Mes", "Cidade", "Peso", "Valor", "PLACA", "Categoria"]
+_PESO_COLUMNS = ["Data", "Mes", "Cidade", "Rota", "Peso", "Valor", "PLACA", "Categoria"]
 _PLACAS_COLUMNS = ["PLACA", "Categoria"]
 _PLATE_ALIASES = {
     "EUX6525": "EUX6F25",
@@ -144,6 +144,7 @@ _COLUMN_SQL_TYPES = {
     "Motorista": "TEXT",
     "Ajudante": "TEXT",
     "Cidade": "TEXT",
+    "Rota": "TEXT",
     "Hotel": "TEXT",
     "Tipo": "TEXT",
     "OFICINA": "TEXT",
@@ -2076,7 +2077,7 @@ def load_peso() -> pd.DataFrame:
             df,
             date_columns=["Data"],
             numeric_columns=["Peso", "Valor"],
-            text_columns=["Cidade"],
+            text_columns=["Cidade", "Rota"],
             plate_columns=["PLACA"],
         )
         df = _apply_plate_categories(df)

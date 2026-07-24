@@ -5650,6 +5650,7 @@ HOTEIS_SHEET_ALIASES = {
 PESO_SHEET_ALIASES = {
     "DATA": ["DATA", "DT"],
     "CIDADE": ["CIDADE"],
+    "ROTA": ["ROTA"],
     "PESO": ["PESO"],
     "PLACA": ["PLACA", "PLACAS"],
 }
@@ -6177,6 +6178,7 @@ def _peso_rows_from_sheet(df: pd.DataFrame, plate_map: dict[str, str]) -> tuple[
     aliases = {
         "DATA": ["DATA", "DT"],
         "CIDADE": ["CIDADE"],
+        "ROTA": ["ROTA"],
         "PESO": ["PESO"],
         "VALOR": ["VALOR", "CUSTO"],
         "PLACA": ["PLACA", "PLACAS"],
@@ -6192,6 +6194,7 @@ def _peso_rows_from_sheet(df: pd.DataFrame, plate_map: dict[str, str]) -> tuple[
     for idx, row in df.iterrows():
         data_info = _parse_sheet_date(row.get(resolved["DATA"]))
         cidade = _sheet_text(row, resolved.get("CIDADE"), upper=True)
+        rota = _sheet_text(row, resolved.get("ROTA"), upper=True)
         peso = _parse_brl_number(row.get(resolved["PESO"]))
         valor = _parse_brl_number(row.get(resolved.get("VALOR"))) if resolved.get("VALOR") else 0.0
         placa_raw = _sheet_text(row, resolved.get("PLACA"), upper=True)
@@ -6217,6 +6220,7 @@ def _peso_rows_from_sheet(df: pd.DataFrame, plate_map: dict[str, str]) -> tuple[
                 "Data": data,
                 "Mes": mes,
                 "Cidade": cidade,
+                "Rota": rota,
                 "Peso": peso,
                 "Valor": valor if valor is not None else 0.0,
                 "PLACA": placa,
@@ -6405,10 +6409,11 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
     with st.expander("Adicionar peso por planilha", expanded=False):
         _render_sheet_downloads(
             backend.load_peso,
-            [("Data", "DATA"), ("Cidade", "CIDADE"), ("Peso", "PESO"), ("Valor", "VALOR"), ("PLACA", "PLACA")],
+            [("Data", "DATA"), ("Cidade", "CIDADE"), ("Rota", "ROTA"), ("Peso", "PESO"), ("Valor", "VALOR"), ("PLACA", "PLACA")],
             {
                 "DATA": date.today(),
                 "CIDADE": "SAO PAULO",
+                "ROTA": "ROTA EXEMPLO",
                 "PESO": 1250.5,
                 "VALOR": 180.0,
                 "PLACA": "ABC1D23",
@@ -6441,7 +6446,7 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
             return
 
         preview = pd.DataFrame(rows)
-        st.dataframe(preview[["Data", "Mes", "Cidade", "PLACA", "Peso", "Valor", "Categoria"]], width="stretch", hide_index=True)
+        st.dataframe(preview[["Data", "Mes", "Cidade", "Rota", "PLACA", "Peso", "Valor", "Categoria"]], width="stretch", hide_index=True)
         _render_peso_import_summary(preview)
         if st.button(f"Importar {len(rows)} entrega(s)", type="primary", width="stretch", key="cad_peso_import_sheet"):
             imported_rows: list[dict] = []
@@ -7490,6 +7495,7 @@ def render_cadastro() -> None:
                     placa, categoria = _plate_fields("cad_peso", plate_map)
                 with c2:
                     cidade = st.text_input("Cidade", key="cad_peso_cidade")
+                    rota = st.text_input("Rota", key="cad_peso_rota")
                 with c3:
                     peso = st.number_input("Peso", min_value=0.0, step=1.0, format="%.3f", key="cad_peso_peso")
                     valor = st.number_input("Valor", min_value=0.0, step=10.0, format="%.2f", key="cad_peso_valor")
@@ -7501,6 +7507,7 @@ def render_cadastro() -> None:
                             "Data": data,
                             "Mes": _entry_month(data),
                             "Cidade": cidade,
+                            "Rota": rota,
                             "Peso": peso,
                             "Valor": valor,
                             "PLACA": placa,
@@ -7513,19 +7520,20 @@ def render_cadastro() -> None:
             _render_dataset_editor(
                 "peso",
                 backend.load_peso,
-                ["Data", "Mes", "Cidade", "PLACA", "Categoria", "Peso", "Valor"],
+                ["Data", "Mes", "Cidade", "Rota", "PLACA", "Categoria", "Peso", "Valor"],
                 ["Data", "PLACA", "Cidade"],
                 "cad_peso_table",
                 {
                     "Data": _date_col(),
                     "Mes": st.column_config.TextColumn("Mes"),
                     "Cidade": st.column_config.TextColumn("Cidade"),
+                    "Rota": st.column_config.TextColumn("Rota"),
                     "PLACA": st.column_config.TextColumn("Placa"),
                     "Categoria": st.column_config.SelectboxColumn("Categoria", options=CATEGORY_OPTIONS, required=True),
                     "Peso": _number_col("Peso"),
                     "Valor": _money_col("Valor"),
                 },
-                ["Mes", "Cidade", "PLACA", "Categoria"],
+                ["Mes", "Cidade", "Rota", "PLACA", "Categoria"],
             )
 
         if active_tab == "Pedágio/Extras":
