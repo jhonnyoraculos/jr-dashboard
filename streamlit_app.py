@@ -4500,8 +4500,14 @@ def render_frota() -> None:
     totais = data.get("totais", {}) or {}
     order_label = RANK_ORDER_OPTIONS.get(str(data.get("ordenar_por") or params.get("ordenar_por")), "Combustível")
     selected_categories = [str(item) for item in (params.get("categoria") or []) if item not in (None, "", "Todos")]
+    selected_routes = [str(item) for item in (params.get("rota") or []) if item not in (None, "", "Todos")]
     freteiro_mode = selected_categories == ["Freteiro"]
     include_hoteis = bool(totais.get("inclui_hoteis") or params.get("incluir_hoteis"))
+    if selected_routes:
+        st.caption(
+            "Combustivel e pedagio foram ligados por data e placa e rateados pelo peso de cada rota no dia. "
+            "Quando o peso do dia e zero, o rateio usa a quantidade de entregas."
+        )
 
     kpi_items = [
         ("Placas no ranking", fmt_num(totais.get("placas")), JR_BLUE),
