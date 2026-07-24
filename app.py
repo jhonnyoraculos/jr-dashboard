@@ -2894,6 +2894,20 @@ def _ranking_count_by_plate(df: pd.DataFrame) -> dict[str, int]:
     return {str(placa): int(valor or 0) for placa, valor in grouped.items()}
 
 
+def _ranking_active_days_by_plate(df_peso: pd.DataFrame) -> dict[str, int]:
+    if df_peso.empty or not {"Data", "PLACA"}.issubset(df_peso.columns):
+        return {}
+    work = df_peso[["Data", "PLACA"]].copy()
+    work["Data"] = pd.to_datetime(work["Data"], errors="coerce").dt.normalize()
+    work["PLACA"] = work["PLACA"].astype("string").str.strip()
+    work = work.dropna(subset=["Data", "PLACA"])
+    work = work[work["PLACA"] != ""].drop_duplicates(["Data", "PLACA"])
+    if work.empty:
+        return {}
+    grouped = work.groupby("PLACA")["Data"].nunique()
+    return {str(placa): int(days or 0) for placa, days in grouped.items()}
+
+
 def _ranking_freighter_daily_rates(registry: pd.DataFrame | None = None) -> dict[str, float]:
     if registry is None:
         try:
@@ -3159,6 +3173,7 @@ def data_frota(params: dict | None = None) -> dict:
     df_km = _ranking_filter_plates(df_km, placas)
     df_peso = _ranking_filter_plates(df_peso, placas)
     dominancia_peso = _ranking_weight_dominance_by_route(df_peso_dominancia, placas)
+    route_days_map = _ranking_active_days_by_plate(df_peso) if rotas else {}
 
     categorias = set()
     for df_src in source_frames:
@@ -3195,6 +3210,8 @@ def data_frota(params: dict | None = None) -> dict:
         combustivel_total = total_comb.get(placa, 0.0)
         manutencao_total = total_manu.get(placa, 0.0)
         pedagio_total = total_ped.get(placa, 0.0)
+        dias_na_rota = route_days_map.get(placa, 0)
+        manutencao_diaria = (manutencao_total / dias_na_rota) if dias_na_rota else 0.0
         peso_total = peso_map.get(placa, 0.0)
         valor_peso_total = valor_peso_map.get(placa, 0.0)
         diaria = daily_rates.get(placa, 0.0) if _normalize_category_value(categoria) == "Freteiro" else 0.0
@@ -3211,6 +3228,8 @@ def data_frota(params: dict | None = None) -> dict:
                 "total": round(total, 2),
                 "combustivel": round(combustivel_total, 2),
                 "manutencao": round(manutencao_total, 2),
+                "manutencao_diaria": round(manutencao_diaria, 2),
+                "dias_na_rota": dias_na_rota,
                 "pedagio": round(pedagio_total, 2),
                 "diaria": round(diaria, 2),
                 "dias_trabalhados": dias_trabalhados,
@@ -3250,6 +3269,8 @@ def data_frota(params: dict | None = None) -> dict:
     total_gasto_placas = sum(row["total"] for row in ranking)
     total_gasto = total_gasto_placas + total_hoteis
     total_placas = len(ranking)
+    total_dias_na_rota = sum(row["dias_na_rota"] for row in ranking)
+    total_manutencao = sum(row["manutencao"] for row in ranking)
     periodos_media = set(meses) if meses else {str(mes) for mes in meses_disponiveis if str(mes).strip()}
     total_meses = len(periodos_media)
 
@@ -3271,7 +3292,9 @@ def data_frota(params: dict | None = None) -> dict:
             "total": round(total_gasto, 2),
             "media_mensal": round((total_gasto / total_meses) if total_meses else 0.0, 2),
             "combustivel": round(sum(row["combustivel"] for row in ranking), 2),
-            "manutencao": round(sum(row["manutencao"] for row in ranking), 2),
+            "manutencao": round(total_manutencao, 2),
+            "manutencao_diaria": round((total_manutencao / total_dias_na_rota) if total_dias_na_rota else 0.0, 2),
+            "dias_na_rota": total_dias_na_rota,
             "pedagio": round(sum(row["pedagio"] for row in ranking), 2),
             "gasto_diarias": round(sum(row["gasto_diarias"] for row in ranking), 2),
             "dias_trabalhados": sum(row["dias_trabalhados"] for row in ranking),

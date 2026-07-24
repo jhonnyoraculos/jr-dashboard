@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-freteiros-diarias-v1"
+APP_VERSION = "deploy-manutencao-diaria-por-rota-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4237,7 +4237,13 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
     }
 
 
-def ranking_summary_html(row: dict, *, hide_fuel: bool = False, show_daily: bool = False) -> str:
+def ranking_summary_html(
+    row: dict,
+    *,
+    hide_fuel: bool = False,
+    show_daily: bool = False,
+    show_route_maintenance_daily: bool = False,
+) -> str:
     items = [
         ("Posição", f"#{int(row.get('rank') or 0):02d}"),
         ("Placa", row.get("placa") or "Sem placa"),
@@ -4246,6 +4252,11 @@ def ranking_summary_html(row: dict, *, hide_fuel: bool = False, show_daily: bool
         ("Pedágio/Extras", fmt_brl_big(row.get("pedagio"))),
         ("Peso", fmt_peso(row.get("peso_total"))),
     ]
+    if show_route_maintenance_daily:
+        items[4:4] = [
+            ("Manutenção por dia", fmt_brl_big(row.get("manutencao_diaria"))),
+            ("Dias na rota", fmt_num(row.get("dias_na_rota"))),
+        ]
     if show_daily and str(row.get("categoria") or "") == "Freteiro":
         items[3:3] = [
             ("Gasto com diárias", fmt_brl_big(row.get("gasto_diarias"))),
@@ -4259,7 +4270,13 @@ def ranking_summary_html(row: dict, *, hide_fuel: bool = False, show_daily: bool
     )
 
 
-def ranking_detail_html(row: dict, *, hide_fuel: bool = False, show_daily: bool = False) -> str:
+def ranking_detail_html(
+    row: dict,
+    *,
+    hide_fuel: bool = False,
+    show_daily: bool = False,
+    show_route_maintenance_daily: bool = False,
+) -> str:
     items = [
         ("Gasto total", fmt_brl_big(row.get("total"))),
         ("Manutenção", fmt_brl_big(row.get("manutencao"))),
@@ -4269,6 +4286,11 @@ def ranking_detail_html(row: dict, *, hide_fuel: bool = False, show_daily: bool 
         ("Serviços", fmt_num(row.get("servicos"))),
         ("Pedágio/Extras", fmt_num(row.get("despesas_pedagio"))),
     ]
+    if show_route_maintenance_daily:
+        items[2:2] = [
+            ("Manutenção por dia", fmt_brl_big(row.get("manutencao_diaria"))),
+            ("Dias na rota", fmt_num(row.get("dias_na_rota"))),
+        ]
     if show_daily and str(row.get("categoria") or "") == "Freteiro":
         items[1:1] = [
             ("Valor da diária", fmt_brl_big(row.get("diaria"))),
@@ -4290,10 +4312,21 @@ def ranking_detail_html(row: dict, *, hide_fuel: bool = False, show_daily: bool 
         f'<div class="ranking-detail-card"><p class="ranking-detail-label">{h(label)}</p><p class="ranking-detail-value">{h(value)}</p></div>'
         for label, value in items
     )
-    return f'<div class="ranking-row-summary">{ranking_summary_html(row, hide_fuel=hide_fuel, show_daily=show_daily)}</div><div class="ranking-detail-grid">{cards}</div>'
+    return (
+        '<div class="ranking-row-summary">'
+        f'{ranking_summary_html(row, hide_fuel=hide_fuel, show_daily=show_daily, show_route_maintenance_daily=show_route_maintenance_daily)}'
+        '</div>'
+        f'<div class="ranking-detail-grid">{cards}</div>'
+    )
 
 
-def ranking_row_label(row: dict, *, hide_fuel: bool = False, show_daily: bool = False) -> str:
+def ranking_row_label(
+    row: dict,
+    *,
+    hide_fuel: bool = False,
+    show_daily: bool = False,
+    show_route_maintenance_daily: bool = False,
+) -> str:
     def money(value: object) -> str:
         return fmt_brl_big(value).replace("$", r"\$")
 
@@ -4304,6 +4337,11 @@ def ranking_row_label(row: dict, *, hide_fuel: bool = False, show_daily: bool = 
         f"Pedagio/Extras {money(row.get('pedagio'))}",
         f"Peso {fmt_peso(row.get('peso_total'))}",
     ]
+    if show_route_maintenance_daily:
+        parts.insert(
+            3,
+            f"Manut./dia {money(row.get('manutencao_diaria'))} ({fmt_num(row.get('dias_na_rota'))} dias)",
+        )
     if show_daily and str(row.get("categoria") or "") == "Freteiro":
         parts.insert(
             2,
@@ -4322,7 +4360,13 @@ def _ranking_float(row: dict, key: str) -> float:
         return 0.0
 
 
-def ranking_difference_html(rows: list[dict], *, hide_fuel: bool = False, show_daily: bool = False) -> str:
+def ranking_difference_html(
+    rows: list[dict],
+    *,
+    hide_fuel: bool = False,
+    show_daily: bool = False,
+    show_route_maintenance_daily: bool = False,
+) -> str:
     if len(rows) < 2:
         return ""
     metrics = [
@@ -4331,6 +4375,11 @@ def ranking_difference_html(rows: list[dict], *, hide_fuel: bool = False, show_d
         ("Pedágio/Extras", "pedagio", fmt_brl_big),
         ("Peso", "peso_total", fmt_peso),
     ]
+    if show_route_maintenance_daily:
+        metrics[2:2] = [
+            ("Manutenção por dia", "manutencao_diaria", fmt_brl_big),
+            ("Dias na rota", "dias_na_rota", fmt_num),
+        ]
     if show_daily:
         metrics[1:1] = [
             ("Gasto com diárias", "gasto_diarias", fmt_brl_big),
@@ -4363,7 +4412,13 @@ def ranking_difference_html(rows: list[dict], *, hide_fuel: bool = False, show_d
     )
 
 
-def ranking_versus_html(rows: list[dict], *, hide_fuel: bool = False, show_daily: bool = False) -> str:
+def ranking_versus_html(
+    rows: list[dict],
+    *,
+    hide_fuel: bool = False,
+    show_daily: bool = False,
+    show_route_maintenance_daily: bool = False,
+) -> str:
     metrics = [
         ("Total", "total", fmt_brl_big),
         ("Manutenção", "manutencao", fmt_brl_big),
@@ -4371,6 +4426,11 @@ def ranking_versus_html(rows: list[dict], *, hide_fuel: bool = False, show_daily
         ("Peso", "peso_total", fmt_peso),
         ("Valor entregas", "valor_peso", fmt_brl_big),
     ]
+    if show_route_maintenance_daily:
+        metrics[2:2] = [
+            ("Manutenção por dia", "manutencao_diaria", fmt_brl_big),
+            ("Dias na rota", "dias_na_rota", fmt_num),
+        ]
     if show_daily:
         metrics[1:1] = [
             ("Valor da diária", "diaria", fmt_brl_big),
@@ -4537,10 +4597,12 @@ def render_frota() -> None:
         or float(totais.get("gasto_diarias") or 0) > 0
         or any(float(row.get("diaria") or 0) > 0 for row in ranking)
     )
+    show_route_maintenance_daily = bool(selected_routes)
     if selected_routes:
         st.caption(
             "Os custos de combustivel e pedagio foram ligados por data e placa e rateados por rota. "
             "As diarias contam os dias em que cada Freteiro aparece na rota selecionada. "
+            "A manutencao por dia divide o total de manutencao pela soma dos dias distintos das placas na rota. "
             "Litros, KM e KM/L continuam usando os dados gerais da placa no periodo."
         )
 
@@ -4567,6 +4629,16 @@ def render_frota() -> None:
         ]
     if include_hoteis:
         kpi_items.insert(5 if not freteiro_mode else 4, ("Hoteis", fmt_brl_big(totais.get("hoteis")), "#0F766E"))
+    if show_route_maintenance_daily:
+        maintenance_index = next(
+            (index + 1 for index, item in enumerate(kpi_items) if item[0] == "Manutenção"),
+            len(kpi_items),
+        )
+        route_days = fmt_num(totais.get("dias_na_rota"))
+        kpi_items.insert(
+            maintenance_index,
+            (f"Manutenção/dia ({route_days} dias)", fmt_brl_big(totais.get("manutencao_diaria")), "#7C3AED"),
+        )
     with st.container(key="frota_kpis"):
         render_kpis(kpi_items)
 
@@ -4581,8 +4653,18 @@ def render_frota() -> None:
         selected_set = set(selected_plates)
         versus_rows = [row for row in ranking if row.get("placa") in selected_set]
         st.html(
-            ranking_difference_html(versus_rows, hide_fuel=freteiro_mode, show_daily=show_daily)
-            + ranking_versus_html(versus_rows, hide_fuel=freteiro_mode, show_daily=show_daily)
+            ranking_difference_html(
+                versus_rows,
+                hide_fuel=freteiro_mode,
+                show_daily=show_daily,
+                show_route_maintenance_daily=show_route_maintenance_daily,
+            )
+            + ranking_versus_html(
+                versus_rows,
+                hide_fuel=freteiro_mode,
+                show_daily=show_daily,
+                show_route_maintenance_daily=show_route_maintenance_daily,
+            )
         )
 
     include_year = params.get("ano") is None
@@ -4684,14 +4766,32 @@ def render_frota() -> None:
     if not freteiro_mode:
         header_columns[3:3] = ["Combustivel"]
         header_columns.extend(["KM", "Litros"])
+    if show_route_maintenance_daily:
+        maintenance_header_index = header_columns.index("Manutencao") + 1
+        header_columns.insert(maintenance_header_index, "Manut./dia")
     st.markdown(
         f'<div class="ranking-header">{"".join(f"<span>{h(column)}</span>" for column in header_columns)}</div>',
         unsafe_allow_html=True,
     )
     with st.container(key="frota_ranking_table"):
         for row in ranking:
-            with st.expander(ranking_row_label(row, hide_fuel=freteiro_mode, show_daily=show_daily), expanded=False):
-                st.html(ranking_detail_html(row, hide_fuel=freteiro_mode, show_daily=show_daily))
+            with st.expander(
+                ranking_row_label(
+                    row,
+                    hide_fuel=freteiro_mode,
+                    show_daily=show_daily,
+                    show_route_maintenance_daily=show_route_maintenance_daily,
+                ),
+                expanded=False,
+            ):
+                st.html(
+                    ranking_detail_html(
+                        row,
+                        hide_fuel=freteiro_mode,
+                        show_daily=show_daily,
+                        show_route_maintenance_daily=show_route_maintenance_daily,
+                    )
+                )
     footer("Ranking calculado com dados de combustível, manutenção, diárias e pedágio/extras do Neon. © JR")
 
 
