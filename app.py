@@ -3062,14 +3062,14 @@ def _ranking_weight_dominance_by_route(df: pd.DataFrame, placas: list[str] | Non
     if placas:
         selected = grouped[grouped["PLACA"].isin(placas)].copy()
     else:
-        selected = grouped.sort_values(["Rota", "Peso", "PLACA"], ascending=[True, False, True]).drop_duplicates("Rota", keep="first").copy()
+        selected = grouped.copy()
 
     if selected.empty:
         return {"labels": [], "values": [], "route_counts": [], "rotas": []}
 
     by_plate = selected.groupby("PLACA", as_index=False).agg(Peso=("Peso", "sum"), Rotas=("Rota", "count"))
     by_plate = by_plate.sort_values(["Peso", "Rotas", "PLACA"], ascending=[False, False, True])
-    routes = selected.sort_values(["Peso", "Rota", "PLACA"], ascending=[False, True, True])
+    routes = selected.sort_values(["Rota", "Peso", "PLACA"], ascending=[True, False, True])
     return {
         "labels": [str(item) for item in by_plate["PLACA"].tolist()],
         "values": [round(float(item), 3) for item in by_plate["Peso"].tolist()],

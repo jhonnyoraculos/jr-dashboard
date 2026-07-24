@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-media-manutencao-por-placa-v1"
+APP_VERSION = "deploy-todas-placas-por-rota-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4685,7 +4685,7 @@ def dominance_route_ranking_html(rotas: list[dict]) -> str:
     return (
         '<div class="dominance-panel">'
         '<p class="dominance-title">Ranking de peso por rota e placa</p>'
-        '<p class="dominance-note">Cada rota aparece com a placa que mais transportou peso nos filtros selecionados.</p>'
+        '<p class="dominance-note">Todas as placas de cada rota aparecem em ordem de peso nos filtros selecionados.</p>'
         f'<div class="dominance-cities">{"".join(rows_html)}</div>'
         '</div>'
     )
