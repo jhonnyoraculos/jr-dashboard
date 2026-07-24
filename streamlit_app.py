@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-todas-placas-por-rota-v1"
+APP_VERSION = "deploy-manutencao-placas-da-rota-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4007,7 +4007,7 @@ def frota_route_comparison_html(
         if selected_plate_count == 1
         else "Média diária das placas selecionadas"
         if selected_plate_count > 1
-        else "Média diária geral de manutenção"
+        else "Média diária das placas da rota"
     )
     metrics.extend(
         [
@@ -4754,8 +4754,8 @@ def render_frota() -> None:
             "A manutencao usa o total de cada placa selecionada no periodo, dividido por todos os dias trabalhados "
             "por ela, e aplica essa media aos dias dela nas rotas. "
             if selected_plates
-            else "A manutencao usa a media diaria geral do periodo, calculada com todos, e aplica essa media "
-            "aos dias distintos das placas nas rotas. "
+            else "A manutencao identifica as placas das rotas, calcula a media diaria individual de cada uma usando "
+            "o total e todos os dias dela no periodo, e aplica essa media aos dias trabalhados nas rotas. "
         )
         comparison_hint = (
             " O comparativo individual das rotas aparece logo abaixo dos cards gerais."
@@ -4793,7 +4793,11 @@ def render_frota() -> None:
             else "Manutenção estimada das placas nas rotas"
         )
     elif selected_routes:
-        maintenance_total_label = "Manutenção estimada nas rotas"
+        maintenance_total_label = (
+            "Manutenção estimada das placas da rota"
+            if len(selected_routes) == 1
+            else "Manutenção estimada das placas nas rotas"
+        )
     else:
         maintenance_total_label = "Manutenção total no período"
     cost_kpis = [
@@ -4809,7 +4813,9 @@ def render_frota() -> None:
             if len(selected_plates) == 1
             else "Média diária das placas selecionadas"
             if selected_plates
-            else "Média diária geral de manutenção"
+            else "Média diária das placas da rota"
+            if len(selected_routes) == 1
+            else "Média diária das placas nas rotas"
         )
         cost_kpis.insert(
             3,

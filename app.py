@@ -3165,23 +3165,12 @@ def data_frota(params: dict | None = None) -> dict:
     df_manu_general = df_manu.copy()
     df_peso_general = df_peso.copy()
     general_days_by_plate = _ranking_active_days_by_plate(df_peso_general)
-    general_active_days = sum(general_days_by_plate.values())
     general_maintenance_by_plate = _ranking_sum_by_plate(df_manu_general, "Custo")
     maintenance_daily_by_plate = {
         plate: general_maintenance_by_plate.get(plate, 0.0) / active_days
         for plate, active_days in general_days_by_plate.items()
         if active_days
     }
-    general_maintenance_total = (
-        float(pd.to_numeric(df_manu_general.get("Custo"), errors="coerce").fillna(0).sum())
-        if "Custo" in df_manu_general.columns
-        else 0.0
-    )
-    maintenance_daily_average = (
-        general_maintenance_total / general_active_days
-        if general_active_days
-        else 0.0
-    )
     general_hotel_total = (
         float(pd.to_numeric(df_hoteis_period.get("Valor"), errors="coerce").fillna(0).sum())
         if incluir_hoteis and "Valor" in df_hoteis_period.columns
@@ -3257,16 +3246,10 @@ def data_frota(params: dict | None = None) -> dict:
 
     category_map = _ranking_category_map(df_comb_base, df_manu_base, df_ped_base, df_peso_base)
     total_comb = _ranking_sum_by_plate(df_comb, "Custo")
-    if rotas and placas:
+    if rotas:
         df_manu_costs = _ranking_daily_plate_costs(
             df_peso,
             maintenance_daily_by_plate,
-            "Custo",
-        )
-    elif rotas:
-        df_manu_costs = _ranking_daily_average_costs(
-            df_peso,
-            maintenance_daily_average,
             "Custo",
         )
     else:
