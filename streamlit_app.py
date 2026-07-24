@@ -6518,12 +6518,12 @@ def _render_peso_route_import() -> None:
 
     with st.expander("Importar somente rotas", expanded=False):
         st.info(
-            "A rota informada sera aplicada aos registros de Peso daquela data e placa. "
+            "Cada linha de rota sera ligada a um registro de Peso com a mesma data e placa. "
             "Somente a coluna Rota sera alterada; os demais dados permanecem como estao."
         )
         st.caption(
             "Use as colunas DATA, PLACA e ROTA. "
-            "A mesma data pode ter rotas diferentes quando as placas forem diferentes."
+            "Quando a mesma placa tiver varias entregas no dia, mantenha as linhas na mesma ordem da planilha de Peso."
         )
         _render_sheet_downloads(
             backend.load_peso_route_template,
@@ -6592,8 +6592,9 @@ def _render_peso_route_import() -> None:
         )
         preview_columns = ["Data", "Rota atual", "Nova rota", "Placa", "Cidade", "Peso", "Valor"]
         st.success(
-            f"{route_targets} combinacao(oes) de data e placa conferida(s). "
-            f"A rota sera aplicada a {len(preview)} registro(s) de peso."
+            f"{len(rows)} rota(s) conferida(s) em "
+            f"{route_targets} combinacao(oes) de data e placa. "
+            f"A previa abaixo mostra o pareamento com {len(preview)} registro(s) de peso."
         )
         st.dataframe(
             preview_display[[column for column in preview_columns if column in preview_display.columns]],
