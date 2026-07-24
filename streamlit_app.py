@@ -6588,9 +6588,38 @@ def _render_peso_route_import() -> None:
             {(str(row.get("Data")), str(row.get("PLACA"))) for row in rows}
         )
         preview_display = preview.rename(
-            columns={"RotaAtual": "Rota atual", "Rota": "Nova rota", "PLACA": "Placa"}
+            columns={
+                "RotaAtual": "Rota atual",
+                "Rota": "Nova rota",
+                "PLACAInformada": "Placa informada",
+                "PLACA": "Placa cadastrada",
+            }
         )
-        preview_columns = ["Data", "Rota atual", "Nova rota", "Placa", "Cidade", "Peso", "Valor"]
+        preview_columns = [
+            "Data",
+            "Placa informada",
+            "Placa cadastrada",
+            "Rota atual",
+            "Nova rota",
+            "Cidade",
+            "Peso",
+            "Valor",
+        ]
+        adjusted_plates = (
+            preview_display.loc[
+                preview_display["Placa informada"].astype("string")
+                != preview_display["Placa cadastrada"].astype("string"),
+                ["Placa informada", "Placa cadastrada"],
+            ]
+            .drop_duplicates()
+            .to_dict("records")
+        )
+        if adjusted_plates:
+            adjustments = ", ".join(
+                f"{item['Placa informada']} -> {item['Placa cadastrada']}"
+                for item in adjusted_plates
+            )
+            st.info(f"Diferencas de digitacao reconhecidas: {adjustments}.")
         st.success(
             f"{len(rows)} rota(s) conferida(s) em "
             f"{route_targets} combinacao(oes) de data e placa. "

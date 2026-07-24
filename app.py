@@ -735,6 +735,13 @@ def _prepare_peso_route_rows(rows: list[dict]) -> list[dict]:
     return prepared
 
 
+def _peso_route_plate_match_key(value) -> str:
+    normalized = _normalize_plate_value(value)
+    if pd.isna(normalized):
+        return ""
+    return str(normalized).translate(str.maketrans({"I": "1", "L": "1", "O": "0", "Q": "0"}))
+
+
 def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[dict], list[str]]:
     from sqlalchemy import text
 
@@ -748,31 +755,77 @@ def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[
     errors: list[str] = []
     lock_sql = " FOR UPDATE" if lock else ""
     for (route_date, plate), route_rows in grouped.items():
-        candidates = conn.execute(
-            text(
-                f"""
-                SELECT
-                    ctid::text AS "__row_id",
-                    "Data",
-                    "Cidade",
-                    "PLACA",
-                    "Categoria",
-                    "Peso",
-                    "Valor",
-                    "Rota" AS "RotaAtual"
-                FROM {table}
-                WHERE CAST("Data" AS DATE) = :route_date
-                  AND "PLACA" = :plate
-                ORDER BY ctid
-                {lock_sql}
-                """
-            ),
-            {"route_date": route_date, "plate": plate},
-        ).mappings().all()
+        def load_candidates(candidate_plate: str):
+            return conn.execute(
+                text(
+                    f"""
+                    SELECT
+                        ctid::text AS "__row_id",
+                        "Data",
+                        "Cidade",
+                        "PLACA",
+                        "Categoria",
+                        "Peso",
+                        "Valor",
+                        "Rota" AS "RotaAtual"
+                    FROM {table}
+                    WHERE CAST("Data" AS DATE) = :route_date
+                      AND "PLACA" = :plate
+                    ORDER BY ctid
+                    {lock_sql}
+                    """
+                ),
+                {"route_date": route_date, "plate": candidate_plate},
+            ).mappings().all()
+
+        matched_plate = plate
+        candidates = load_candidates(matched_plate)
+        if not candidates:
+            available_rows = conn.execute(
+                text(
+                    f"""
+                    SELECT DISTINCT "PLACA"
+                    FROM {table}
+                    WHERE CAST("Data" AS DATE) = :route_date
+                      AND COALESCE(TRIM("PLACA"), '') <> ''
+                    ORDER BY "PLACA"
+                    """
+                ),
+                {"route_date": route_date},
+            ).scalars().all()
+            available_plates = [str(value).strip() for value in available_rows if str(value or "").strip()]
+            input_key = _peso_route_plate_match_key(plate)
+            similar_plates = [
+                value for value in available_plates if _peso_route_plate_match_key(value) == input_key
+            ]
+            if len(similar_plates) == 1:
+                matched_plate = similar_plates[0]
+                candidates = load_candidates(matched_plate)
+            elif len(similar_plates) > 1:
+                errors.append(
+                    f"{route_date.strftime('%d/%m/%Y')} - {plate}: placa ambigua. "
+                    f"Pode corresponder a {', '.join(similar_plates)}."
+                )
+                continue
+            else:
+                available_text = ", ".join(available_plates[:8])
+                if len(available_plates) > 8:
+                    available_text += ", ..."
+                detail = (
+                    f" Placas cadastradas nessa data: {available_text}."
+                    if available_text
+                    else " Nao ha placas cadastradas nessa data."
+                )
+                errors.append(
+                    f"{route_date.strftime('%d/%m/%Y')} - {plate}: nenhum registro de peso encontrado."
+                    f"{detail}"
+                )
+                continue
 
         if len(candidates) != len(route_rows):
             errors.append(
-                f"{route_date.strftime('%d/%m/%Y')} - {plate}: "
+                f"{route_date.strftime('%d/%m/%Y')} - {plate}"
+                f"{f' (cadastrada como {matched_plate})' if matched_plate != plate else ''}: "
                 f"{len(route_rows)} rota(s) na planilha e {len(candidates)} registro(s) de peso."
             )
             continue
@@ -780,6 +833,7 @@ def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[
         for route_row, candidate in zip(route_rows, candidates):
             match = dict(candidate)
             match["Data"] = route_date
+            match["PLACAInformada"] = plate
             match["Rota"] = route_row["Rota"]
             matches.append(match)
     return matches, errors
