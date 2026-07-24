@@ -726,8 +726,6 @@ def _prepare_peso_route_rows(rows: list[dict]) -> list[dict]:
             raise ValueError(f"Linha {index}: data invalida.")
         if not plate:
             raise ValueError(f"Linha {index}: placa nao preenchida.")
-        if not route:
-            raise ValueError(f"Linha {index}: rota nao preenchida.")
         route_date = parsed_date.date()
         prepared.append({"Data": route_date, "PLACA": plate, "Rota": route})
     if not prepared:
@@ -826,7 +824,7 @@ def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[
             errors.append(
                 f"{route_date.strftime('%d/%m/%Y')} - {plate}"
                 f"{f' (cadastrada como {matched_plate})' if matched_plate != plate else ''}: "
-                f"{len(route_rows)} rota(s) na planilha e {len(candidates)} registro(s) de peso."
+                f"{len(route_rows)} linha(s) na planilha e {len(candidates)} registro(s) de peso."
             )
             continue
 

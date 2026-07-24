@@ -6298,8 +6298,6 @@ def _peso_route_rows_from_sheet(df: pd.DataFrame) -> tuple[list[dict], list[str]
             missing_row.append("DATA")
         if not placa:
             missing_row.append("PLACA")
-        if not rota:
-            missing_row.append("ROTA")
         if missing_row:
             errors.append(f"Linha {idx + 2}: preencher {', '.join(missing_row)}.")
             continue
@@ -6559,7 +6557,8 @@ def _render_peso_route_import() -> None:
         )
         st.caption(
             "Use as colunas DATA, PLACA e ROTA. "
-            "Quando a mesma placa tiver varias entregas no dia, mantenha as linhas na mesma ordem da planilha de Peso."
+            "A ROTA pode ficar vazia. Quando a mesma placa tiver varias entregas no dia, "
+            "mantenha as linhas na mesma ordem da planilha de Peso."
         )
         _render_sheet_downloads(
             backend.load_peso_route_template,
@@ -6657,7 +6656,7 @@ def _render_peso_route_import() -> None:
             )
             st.info(f"Diferencas de digitacao reconhecidas: {adjustments}.")
         st.success(
-            f"{len(rows)} rota(s) conferida(s) em "
+            f"{len(rows)} linha(s) conferida(s) em "
             f"{route_targets} combinacao(oes) de data e placa. "
             f"A previa abaixo mostra o pareamento com {len(preview)} registro(s) de peso."
         )
@@ -6667,7 +6666,7 @@ def _render_peso_route_import() -> None:
             hide_index=True,
         )
         if st.button(
-            f"Aplicar rota em {len(preview)} registro(s)",
+            f"Atualizar rota em {len(preview)} registro(s)",
             type="primary",
             width="stretch",
             key="cad_peso_route_import_confirm",
