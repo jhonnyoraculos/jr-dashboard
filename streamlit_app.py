@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-ganho-entregas-ranking-v1"
+APP_VERSION = "deploy-ranking-cards-organizados-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -863,6 +863,10 @@ def inject_css() -> None:
           .st-key-frota_kpis .kpis {{
             grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
           }}
+        }}
+
+        .st-key-frota_kpis .kpi-section {{
+          grid-column: 1 / -1;
         }}
 
         .kpi-sections {{
@@ -4606,49 +4610,54 @@ def render_frota() -> None:
             "Litros, KM e KM/L continuam usando os dados gerais da placa no periodo."
         )
 
-    kpi_items = [
+    summary_kpis = [
         ("Placas no ranking", fmt_num(totais.get("placas")), JR_BLUE),
-        ("Gasto total", fmt_brl_big(totais.get("total")), JR_RED),
         ("Ganho das entregas", fmt_brl_big(totais.get("valor_peso")), "#15803D"),
-        ("Média mensal de gastos", fmt_brl_big(totais.get("media_mensal")), "#0F766E"),
-        ("Manutenção", fmt_brl_big(totais.get("manutencao")), JR_RED),
-        ("Pedágio/Extras", fmt_brl_big(totais.get("pedagio")), "#D97706"),
         ("Peso total", fmt_peso(totais.get("peso_total")), JR_BLUE),
         ("Ordenado por", order_label, JR_BLUE),
     ]
-    if show_daily:
-        kpi_items[2:2] = [
-            ("Gasto com diárias", fmt_brl_big(totais.get("gasto_diarias")), "#7C3AED"),
-            ("Dias trabalhados", fmt_num(totais.get("dias_trabalhados")), "#7C3AED"),
-        ]
+    operation_kpis = []
     if not freteiro_mode:
-        kpi_items[2:2] = [
+        operation_kpis = [
             ("Combustível", fmt_brl_big(totais.get("combustivel")), JR_BLUE),
-            ("KM total", fmt_num(totais.get("km_total")), JR_BLUE),
             ("Litros", fmt_num(totais.get("litros_total")), JR_BLUE),
+            ("KM total", fmt_num(totais.get("km_total")), JR_BLUE),
             ("Média KM/L", f"{fmt_num(totais.get('km_por_litro'), 2)} km/L", JR_RED),
         ]
-    if include_hoteis:
-        kpi_items.insert(5 if not freteiro_mode else 4, ("Hoteis", fmt_brl_big(totais.get("hoteis")), "#0F766E"))
-        hotel_index = next(
-            (index + 1 for index, item in enumerate(kpi_items) if item[0] == "Hoteis"),
-            len(kpi_items),
-        )
-        hotel_days = fmt_num(totais.get("dias_hoteis"))
-        kpi_items.insert(
-            hotel_index,
-            (f"Hotéis/dia ({hotel_days} dias)", fmt_brl_big(totais.get("hoteis_diaria")), "#0F766E"),
-        )
+
+    cost_kpis = [
+        ("Gasto total", fmt_brl_big(totais.get("total")), JR_RED),
+        ("Média mensal de gastos", fmt_brl_big(totais.get("media_mensal")), "#0F766E"),
+        ("Manutenção total no período", fmt_brl_big(totais.get("manutencao")), JR_RED),
+        ("Pedágio/Extras", fmt_brl_big(totais.get("pedagio")), "#D97706"),
+    ]
     if show_route_maintenance_daily:
-        maintenance_index = next(
-            (index + 1 for index, item in enumerate(kpi_items) if item[0] == "Manutenção"),
-            len(kpi_items),
-        )
         route_days = fmt_num(totais.get("dias_na_rota"))
-        kpi_items.insert(
-            maintenance_index,
+        cost_kpis.insert(
+            3,
             (f"Manutenção/dia ({route_days} dias)", fmt_brl_big(totais.get("manutencao_diaria")), "#7C3AED"),
         )
+    if show_daily:
+        cost_kpis.extend(
+            [
+                ("Gasto com diárias", fmt_brl_big(totais.get("gasto_diarias")), "#7C3AED"),
+                ("Dias trabalhados", fmt_num(totais.get("dias_trabalhados")), "#7C3AED"),
+            ]
+        )
+    if include_hoteis:
+        hotel_days = fmt_num(totais.get("dias_hoteis"))
+        cost_kpis.extend(
+            [
+                ("Hotéis total no período", fmt_brl_big(totais.get("hoteis")), "#0F766E"),
+                (f"Hotéis/dia ({hotel_days} dias)", fmt_brl_big(totais.get("hoteis_diaria")), "#0F766E"),
+            ]
+        )
+
+    kpi_items = [
+        *(item + ("Resultado e produção",) for item in summary_kpis),
+        *(item + ("Operação",) for item in operation_kpis),
+        *(item + ("Custos do período",) for item in cost_kpis),
+    ]
     with st.container(key="frota_kpis"):
         render_kpis(kpi_items)
 
