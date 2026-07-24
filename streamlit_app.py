@@ -4505,8 +4505,8 @@ def render_frota() -> None:
     include_hoteis = bool(totais.get("inclui_hoteis") or params.get("incluir_hoteis"))
     if selected_routes:
         st.caption(
-            "Combustivel e pedagio foram ligados por data e placa e rateados pelo peso de cada rota no dia. "
-            "Quando o peso do dia e zero, o rateio usa a quantidade de entregas."
+            "Somente os custos de combustivel e pedagio foram ligados por data e placa e rateados por rota. "
+            "Litros, KM e KM/L continuam usando os dados gerais da placa no periodo."
         )
 
     kpi_items = [

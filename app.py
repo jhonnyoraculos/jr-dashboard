@@ -3009,6 +3009,7 @@ def data_frota(params: dict | None = None) -> dict:
         return df.copy()
 
     df_comb = _apply_period(df_comb_base)
+    df_comb_metrics = df_comb.copy()
     df_manu = _apply_period(df_manu_base)
     df_ped = _apply_period(df_ped_base)
     df_km = _apply_period(df_km_base)
@@ -3023,7 +3024,7 @@ def data_frota(params: dict | None = None) -> dict:
             df_comb,
             route_shares,
             rotas,
-            ["Custo", "Litros", "Km Rodados"],
+            ["Custo"],
         )
         df_ped = _ranking_allocate_daily_by_routes(
             df_ped,
@@ -3043,17 +3044,24 @@ def data_frota(params: dict | None = None) -> dict:
             else []
         )
         if route_plates:
+            df_comb_metrics = _ranking_filter_plates(df_comb_metrics, route_plates)
             df_manu = _ranking_filter_plates(df_manu, route_plates)
             df_km = _ranking_filter_plates(df_km, route_plates)
         else:
+            df_comb_metrics = df_comb_metrics.iloc[0:0].copy()
             df_manu = df_manu.iloc[0:0].copy()
             df_km = df_km.iloc[0:0].copy()
 
-    plate_source = [df[["PLACA"]] for df in (df_comb, df_manu, df_ped, df_km, df_peso) if not df.empty and "PLACA" in df.columns]
+    plate_source = [
+        df[["PLACA"]]
+        for df in (df_comb, df_comb_metrics, df_manu, df_ped, df_km, df_peso)
+        if not df.empty and "PLACA" in df.columns
+    ]
     placas_disponiveis = _unique_sorted(pd.concat(plate_source, ignore_index=True), "PLACA") if plate_source else []
     df_peso_dominancia = df_peso.copy()
 
     df_comb = _ranking_filter_plates(df_comb, placas)
+    df_comb_metrics = _ranking_filter_plates(df_comb_metrics, placas)
     df_manu = _ranking_filter_plates(df_manu, placas)
     df_ped = _ranking_filter_plates(df_ped, placas)
     df_km = _ranking_filter_plates(df_km, placas)
@@ -3076,11 +3084,11 @@ def data_frota(params: dict | None = None) -> dict:
         mensal_total_frames.append((df_hoteis_period, "Valor"))
     mensal_total = _ranking_monthly_sum(mensal_total_frames, "Valor")
     mensal_peso = _ranking_monthly_sum([(df_peso, "Peso")], "Peso")
-    mensal_km = _ranking_monthly_km(df_km, df_comb)
-    mensal_litros = _ranking_monthly_sum([(df_comb, "Litros")], "Litros")
-    litros_map = _ranking_sum_by_plate(df_comb, "Litros")
+    mensal_km = _ranking_monthly_km(df_km, df_comb_metrics)
+    mensal_litros = _ranking_monthly_sum([(df_comb_metrics, "Litros")], "Litros")
+    litros_map = _ranking_sum_by_plate(df_comb_metrics, "Litros")
     km_override_map = _ranking_sum_by_plate(df_km, "Km Rodados")
-    abastecimentos_map = _ranking_count_by_plate(df_comb)
+    abastecimentos_map = _ranking_count_by_plate(df_comb_metrics)
     servicos_map = _ranking_count_by_plate(df_manu)
     pedagio_count_map = _ranking_count_by_plate(df_ped)
 
