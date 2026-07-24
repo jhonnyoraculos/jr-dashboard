@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-ranking-cards-organizados-v1"
+APP_VERSION = "deploy-comparativo-rotas-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -1525,6 +1525,25 @@ def inject_css() -> None:
           color: var(--jr-red);
           text-align: right;
           font-weight: 900;
+        }}
+
+        .route-compare-card {{
+          border-top-color: var(--route-accent, var(--jr-blue));
+        }}
+
+        .route-compare-card h3 {{
+          color: var(--route-accent, var(--jr-blue));
+        }}
+
+        .route-compare-metric--gain span:last-child {{
+          color: #15803d;
+        }}
+
+        .route-compare-note {{
+          margin: -4px 0 14px;
+          color: var(--muted);
+          font-size: 13px;
+          font-weight: 700;
         }}
 
         .ranking-difference {{
@@ -3912,6 +3931,107 @@ def frota_plate_compare_bundle(params: dict[str, object], selected_plates: list[
     return bundle
 
 
+def frota_route_compare_bundle(params: dict[str, object], selected_routes: list[str]) -> list[tuple[str, dict, str]]:
+    bundle = []
+    for index, route_name in enumerate(selected_routes):
+        route_params = dict(params)
+        route_params["rota"] = [route_name]
+        route_params["incluir_hoteis"] = False
+        try:
+            data = route_json("frota", route_params)
+        except Exception:
+            data = {}
+        bundle.append((route_name, data, YEAR_SERIES_COLORS[index % len(YEAR_SERIES_COLORS)]))
+    return bundle
+
+
+def frota_route_comparison_html(
+    bundle: list[tuple[str, dict, str]],
+    *,
+    hide_fuel: bool = False,
+    show_daily: bool = False,
+) -> str:
+    route_rows = []
+    for route_name, data, color in bundle:
+        totals = data.get("totais", {}) if isinstance(data, dict) else {}
+        route_rows.append(
+            {
+                "rota": route_name,
+                "color": color,
+                "placas": totals.get("placas"),
+                "ganho": totals.get("valor_peso"),
+                "total": totals.get("total"),
+                "combustivel": totals.get("combustivel"),
+                "manutencao": totals.get("manutencao"),
+                "manutencao_diaria": totals.get("manutencao_diaria"),
+                "dias_na_rota": totals.get("dias_na_rota"),
+                "pedagio": totals.get("pedagio"),
+                "gasto_diarias": totals.get("gasto_diarias"),
+                "dias_trabalhados": totals.get("dias_trabalhados"),
+                "peso": totals.get("peso_total"),
+            }
+        )
+    if len(route_rows) < 2:
+        return ""
+
+    highest_gain = max(route_rows, key=lambda row: _ranking_float(row, "ganho"))
+    lowest_cost = min(route_rows, key=lambda row: _ranking_float(row, "total"))
+    highest_weight = max(route_rows, key=lambda row: _ranking_float(row, "peso"))
+    highlights = [
+        ("Maior ganho das entregas", highest_gain, "ganho", fmt_brl_big),
+        ("Menor gasto total", lowest_cost, "total", fmt_brl_big),
+        ("Maior peso transportado", highest_weight, "peso", fmt_peso),
+    ]
+    highlight_html = "".join(
+        '<div class="ranking-difference-item">'
+        f'<p class="ranking-difference-label">{h(label)}</p>'
+        f'<p class="ranking-difference-value">{h(formatter(row.get(key)))}</p>'
+        f'<p class="ranking-difference-note">{h(row.get("rota") or "Sem rota")}</p>'
+        "</div>"
+        for label, row, key, formatter in highlights
+    )
+
+    metrics = [
+        ("Placas", "placas", fmt_num, ""),
+        ("Ganho das entregas", "ganho", fmt_brl_big, " route-compare-metric--gain"),
+        ("Gasto total da rota", "total", fmt_brl_big, ""),
+        ("Manutenção total", "manutencao", fmt_brl_big, ""),
+        ("Manutenção/dia", "manutencao_diaria", fmt_brl_big, ""),
+        ("Dias na rota", "dias_na_rota", fmt_num, ""),
+        ("Pedágio/Extras", "pedagio", fmt_brl_big, ""),
+        ("Peso total", "peso", fmt_peso, ""),
+    ]
+    if not hide_fuel:
+        metrics.insert(3, ("Combustível", "combustivel", fmt_brl_big, ""))
+    if show_daily:
+        metrics[7:7] = [
+            ("Gasto com diárias", "gasto_diarias", fmt_brl_big, ""),
+            ("Dias trabalhados", "dias_trabalhados", fmt_num, ""),
+        ]
+
+    cards = []
+    for row in route_rows:
+        body = "".join(
+            f'<div class="ranking-versus-metric{modifier}"><span>{h(label)}</span>'
+            f'<span>{h(formatter(row.get(key)))}</span></div>'
+            for label, key, formatter, modifier in metrics
+        )
+        cards.append(
+            f'<article class="ranking-versus-card route-compare-card" style="--route-accent:{h(row["color"])}">'
+            f'<h3>{h(row.get("rota") or "Sem rota")}</h3>{body}</article>'
+        )
+
+    return (
+        '<h2 class="ranking-versus-title">Comparativo entre rotas</h2>'
+        '<p class="route-compare-note">Valores calculados separadamente para cada rota nos mesmos filtros de período, categoria e placa.</p>'
+        '<section class="ranking-difference">'
+        '<h3>Destaques das rotas selecionadas</h3>'
+        f'<div class="ranking-difference-grid">{highlight_html}</div>'
+        "</section>"
+        f'<section class="ranking-versus-grid">{"".join(cards)}</section>'
+    )
+
+
 def frota_plate_monthly_series(bundle: list[tuple[str, dict, str]], source_key: str, value_key: str) -> list[dict]:
     series = []
     for plate, data, color in bundle:
@@ -4158,7 +4278,8 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
                 "args": (route_key,),
                 "format_func": select_all_label("Rota"),
                 "label_visibility": "collapsed",
-                "placeholder": "Rota (Todas)",
+                "placeholder": "Selecione 2 rotas para comparar",
+                "help": "Selecione duas ou mais rotas para abrir o comparativo entre elas.",
             }
             if not route_state_exists:
                 route_kwargs["default"] = current_routes
@@ -4603,11 +4724,17 @@ def render_frota() -> None:
     )
     show_route_maintenance_daily = bool(selected_routes)
     if selected_routes:
+        comparison_hint = (
+            " O comparativo individual das rotas aparece logo abaixo dos cards gerais."
+            if len(selected_routes) >= 2
+            else " Selecione mais uma rota no mesmo filtro para abrir o comparativo."
+        )
         st.caption(
             "Os custos de combustivel e pedagio foram ligados por data e placa e rateados por rota. "
-            "As diarias contam os dias em que cada Freteiro aparece na rota selecionada. "
-            "A manutencao por dia divide o total de manutencao pela soma dos dias distintos das placas na rota. "
+            "As diarias contam os dias em que cada Freteiro aparece nas rotas selecionadas. "
+            "A manutencao por dia divide o total de manutencao pela soma dos dias distintos das placas nas rotas. "
             "Litros, KM e KM/L continuam usando os dados gerais da placa no periodo."
+            f"{comparison_hint}"
         )
 
     summary_kpis = [
@@ -4660,6 +4787,21 @@ def render_frota() -> None:
     ]
     with st.container(key="frota_kpis"):
         render_kpis(kpi_items)
+
+    if len(selected_routes) >= 2:
+        route_compare = frota_route_compare_bundle(params, selected_routes)
+        with st.container(key="frota_route_compare"):
+            st.html(
+                frota_route_comparison_html(
+                    route_compare,
+                    hide_fuel=freteiro_mode,
+                    show_daily=show_daily,
+                )
+            )
+            if include_hoteis:
+                st.caption(
+                    "Os hotéis permanecem no consolidado geral, mas não entram no comparativo entre rotas porque não possuem rota vinculada."
+                )
 
     if not ranking:
         st.markdown('<div class="ranking-empty">Nenhum caminhão encontrado para os filtros selecionados.</div>', unsafe_allow_html=True)
