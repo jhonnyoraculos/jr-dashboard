@@ -5655,6 +5655,11 @@ PESO_SHEET_ALIASES = {
     "PLACA": ["PLACA", "PLACAS"],
 }
 
+PESO_ROUTE_SHEET_ALIASES = {
+    "DATA": ["DATA", "DT"],
+    "ROTA": ["ROTA"],
+}
+
 
 def _sheet_xlsx_bytes(df: pd.DataFrame, sheet_name: str) -> bytes:
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -6230,6 +6235,38 @@ def _peso_rows_from_sheet(df: pd.DataFrame, plate_map: dict[str, str]) -> tuple[
     return rows, errors
 
 
+def _peso_route_rows_from_sheet(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
+    header_map = {_normalize_sheet_header(column): column for column in df.columns}
+    resolved = {
+        field: next((header_map[key] for key in aliases if key in header_map), None)
+        for field, aliases in PESO_ROUTE_SHEET_ALIASES.items()
+    }
+    missing = [field for field in ("DATA", "ROTA") if resolved.get(field) is None]
+    if missing:
+        return [], [f"Colunas faltando: {', '.join(missing)}."]
+
+    rows: list[dict] = []
+    errors: list[str] = []
+    for idx, row in df.iterrows():
+        data_info = _parse_sheet_date(row.get(resolved["DATA"]))
+        rota = _sheet_text(row, resolved.get("ROTA"), upper=True)
+        if data_info is None and not rota:
+            continue
+
+        missing_row = []
+        if data_info is None:
+            missing_row.append("DATA")
+        if not rota:
+            missing_row.append("ROTA")
+        if missing_row:
+            errors.append(f"Linha {idx + 2}: preencher {', '.join(missing_row)}.")
+            continue
+
+        data, _ = data_info
+        rows.append({"Data": data, "Rota": rota})
+    return rows, errors
+
+
 def _clear_hoteis_last_import() -> None:
     st.session_state.pop("cad_hotel_last_import_rows", None)
     st.session_state.pop("cad_hotel_last_import_count", None)
@@ -6465,6 +6502,107 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
             st.session_state["cad_peso_last_import_count"] = len(imported_rows)
             _reset_dataset_editor("cad_peso_table")
             st.success(f"{len(imported_rows)} entrega(s) importada(s).")
+            st.rerun()
+
+
+def _render_peso_route_import() -> None:
+    last_success = st.session_state.pop("cad_peso_route_last_success", None)
+    if last_success:
+        st.success(last_success)
+
+    with st.expander("Importar somente rotas", expanded=False):
+        st.info(
+            "Esta importacao atualiza somente a coluna Rota. "
+            "Peso, valor, placa, cidade e os demais dados permanecem como estao."
+        )
+        st.caption(
+            "Use uma linha de DATA e ROTA para cada entrega ainda sem rota. "
+            "Em datas repetidas, mantenha a mesma ordem das entregas da planilha de peso."
+        )
+        _render_sheet_downloads(
+            backend.load_peso_route_template,
+            [("Data", "DATA"), ("Rota", "ROTA")],
+            {"DATA": date.today(), "ROTA": "ROTA EXEMPLO"},
+            key_prefix="cad_peso_route_sheet",
+            file_prefix="rotas_peso",
+            sheet_name="Rotas",
+        )
+
+        upload_nonce = int(st.session_state.get("cad_peso_route_upload_nonce", 0))
+        uploaded = st.file_uploader(
+            "Enviar planilha de rotas",
+            type=["xlsx", "csv"],
+            key=f"cad_peso_route_upload_{upload_nonce}",
+        )
+        if uploaded is None:
+            return
+
+        try:
+            raw_df = _read_uploaded_sheet(uploaded, PESO_ROUTE_SHEET_ALIASES)
+        except Exception as exc:
+            st.error("Nao foi possivel ler a planilha. Envie um arquivo .xlsx ou .csv.")
+            st.exception(exc)
+            return
+
+        rows, errors = _peso_route_rows_from_sheet(raw_df)
+        if errors:
+            st.warning("Revise a planilha antes de importar.")
+            for error in errors[:8]:
+                st.write(error)
+            if len(errors) > 8:
+                st.write(f"...mais {len(errors) - 8} erro(s).")
+            return
+        if not rows:
+            st.warning("Nenhuma rota valida encontrada na planilha.")
+            return
+
+        try:
+            preview_result = backend.preview_peso_route_updates(rows)
+        except Exception as exc:
+            st.error("Nao foi possivel conferir as rotas com os pesos cadastrados.")
+            st.exception(exc)
+            return
+
+        match_errors = preview_result.get("errors") or []
+        if match_errors:
+            st.warning("Nenhum dado foi alterado. Corrija estas diferencas antes de importar:")
+            for error in match_errors[:12]:
+                st.write(error)
+            if len(match_errors) > 12:
+                st.write(f"...mais {len(match_errors) - 12} diferenca(s).")
+            return
+
+        matches = preview_result.get("matches") or []
+        preview = pd.DataFrame(matches)
+        if preview.empty:
+            st.warning("Nao ha registros de peso sem rota correspondentes a esta planilha.")
+            return
+
+        preview_columns = ["Data", "Rota", "PLACA", "Cidade", "Peso", "Valor"]
+        st.success(f"{len(preview)} rota(s) conferida(s) e pronta(s) para atualizar.")
+        st.dataframe(
+            preview[[column for column in preview_columns if column in preview.columns]],
+            width="stretch",
+            hide_index=True,
+        )
+        if st.button(
+            f"Atualizar {len(preview)} rota(s)",
+            type="primary",
+            width="stretch",
+            key="cad_peso_route_import_confirm",
+        ):
+            try:
+                updated = backend.update_peso_routes(rows)
+            except Exception as exc:
+                st.error("Nao foi possivel atualizar as rotas no Neon. Nenhum dado foi apagado.")
+                st.exception(exc)
+                return
+            _reset_dataset_editor("cad_peso_table")
+            clear_cached_reads()
+            st.session_state["cad_peso_route_upload_nonce"] = upload_nonce + 1
+            st.session_state["cad_peso_route_last_success"] = (
+                f"{updated} rota(s) atualizada(s). Os demais dados de peso foram preservados."
+            )
             st.rerun()
 
 
@@ -7486,6 +7624,7 @@ def render_cadastro() -> None:
 
         if active_tab == "Peso":
             _render_peso_sheet_import(plate_map)
+            _render_peso_route_import()
             _render_peso_month_reset()
 
             with st.form("form_peso", clear_on_submit=True):

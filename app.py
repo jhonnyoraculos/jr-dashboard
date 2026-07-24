@@ -683,6 +683,137 @@ def append_dashboard_records(dataset: str, rows: list[dict], *, update_plate_reg
     return version
 
 
+def load_peso_route_template() -> pd.DataFrame:
+    """Return peso rows still missing a route, preserving their database order."""
+    from sqlalchemy import text
+
+    table = _quote_identifier(DB_TABLES["peso"])
+    try:
+        engine = _db_engine()
+        with engine.begin() as conn:
+            _ensure_dataset_table(conn, "peso")
+        df = pd.read_sql_query(
+            text(
+                f"""
+                SELECT "Data", "Mes", COALESCE("Rota", '') AS "Rota"
+                FROM {table}
+                WHERE COALESCE(TRIM("Rota"), '') = ''
+                ORDER BY ctid
+                """
+            ),
+            engine,
+        )
+    except Exception as exc:
+        raise RuntimeError("Nao foi possivel carregar os registros de peso sem rota no Neon.") from exc
+
+    df["Data"] = pd.to_datetime(df.get("Data"), errors="coerce")
+    return df[["Data", "Mes", "Rota"]].copy()
+
+
+def _prepare_peso_route_rows(rows: list[dict]) -> list[dict]:
+    prepared: list[dict] = []
+    for index, row in enumerate(rows, start=2):
+        parsed_date = pd.to_datetime(row.get("Data"), dayfirst=True, errors="coerce")
+        route = str(row.get("Rota") or "").strip().upper()
+        if pd.isna(parsed_date):
+            raise ValueError(f"Linha {index}: data invalida.")
+        if not route:
+            raise ValueError(f"Linha {index}: rota nao preenchida.")
+        prepared.append({"Data": parsed_date.date(), "Rota": route})
+    if not prepared:
+        raise ValueError("Nenhuma rota valida para importar.")
+    return prepared
+
+
+def _match_peso_route_rows(conn, rows: list[dict], *, lock: bool) -> tuple[list[dict], list[str]]:
+    from sqlalchemy import text
+
+    prepared = _prepare_peso_route_rows(rows)
+    grouped: dict[object, list[dict]] = defaultdict(list)
+    for row in prepared:
+        grouped[row["Data"]].append(row)
+
+    table = _quote_identifier(DB_TABLES["peso"])
+    matches: list[dict] = []
+    errors: list[str] = []
+    lock_sql = " FOR UPDATE" if lock else ""
+    for route_date, route_rows in grouped.items():
+        candidates = conn.execute(
+            text(
+                f"""
+                SELECT
+                    ctid::text AS "__row_id",
+                    "Data",
+                    "Cidade",
+                    "PLACA",
+                    "Categoria",
+                    "Peso",
+                    "Valor"
+                FROM {table}
+                WHERE CAST("Data" AS DATE) = :route_date
+                  AND COALESCE(TRIM("Rota"), '') = ''
+                ORDER BY ctid
+                {lock_sql}
+                """
+            ),
+            {"route_date": route_date},
+        ).mappings().all()
+
+        if len(candidates) != len(route_rows):
+            errors.append(
+                f"{route_date.strftime('%d/%m/%Y')}: "
+                f"{len(route_rows)} rota(s) na planilha e {len(candidates)} registro(s) de peso sem rota."
+            )
+            continue
+
+        for route_row, candidate in zip(route_rows, candidates):
+            match = dict(candidate)
+            match["Data"] = route_date
+            match["Rota"] = route_row["Rota"]
+            matches.append(match)
+    return matches, errors
+
+
+def preview_peso_route_updates(rows: list[dict]) -> dict:
+    engine = _db_engine()
+    with engine.begin() as conn:
+        _ensure_dataset_table(conn, "peso")
+        matches, errors = _match_peso_route_rows(conn, rows, lock=False)
+    public_matches = [{key: value for key, value in row.items() if key != "__row_id"} for row in matches]
+    return {"matches": public_matches, "errors": errors}
+
+
+def update_peso_routes(rows: list[dict]) -> int:
+    from sqlalchemy import text
+
+    table = _quote_identifier(DB_TABLES["peso"])
+    version = datetime.now(timezone.utc).isoformat()
+    engine = _db_engine()
+    with engine.begin() as conn:
+        _ensure_dataset_table(conn, "peso")
+        matches, errors = _match_peso_route_rows(conn, rows, lock=True)
+        if errors:
+            raise ValueError("A importacao foi cancelada. " + " ".join(errors))
+
+        if matches:
+            conn.execute(
+                text(
+                    f"""
+                    UPDATE {table}
+                    SET "Rota" = :route
+                    WHERE ctid = CAST(:row_id AS tid)
+                    """
+                ),
+                [{"route": match["Rota"], "row_id": match["__row_id"]} for match in matches],
+            )
+
+        _write_metadata(conn, "peso.version", version)
+        _write_metadata(conn, "import.version", version)
+
+    _clear_dataset_cache("peso")
+    return len(matches)
+
+
 def delete_matching_dashboard_records(dataset: str, rows: list[dict]) -> int:
     if dataset not in DB_TABLES or dataset not in _DATASET_COLUMNS:
         raise ValueError(f"Dataset invalido: {dataset}")
