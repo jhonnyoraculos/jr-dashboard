@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-manutencao-diaria-por-rota-v1"
+APP_VERSION = "deploy-hoteis-diaria-ranking-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4629,6 +4629,15 @@ def render_frota() -> None:
         ]
     if include_hoteis:
         kpi_items.insert(5 if not freteiro_mode else 4, ("Hoteis", fmt_brl_big(totais.get("hoteis")), "#0F766E"))
+        hotel_index = next(
+            (index + 1 for index, item in enumerate(kpi_items) if item[0] == "Hoteis"),
+            len(kpi_items),
+        )
+        hotel_days = fmt_num(totais.get("dias_hoteis"))
+        kpi_items.insert(
+            hotel_index,
+            (f"Hotéis/dia ({hotel_days} dias)", fmt_brl_big(totais.get("hoteis_diaria")), "#0F766E"),
+        )
     if show_route_maintenance_daily:
         maintenance_index = next(
             (index + 1 for index, item in enumerate(kpi_items) if item[0] == "Manutenção"),

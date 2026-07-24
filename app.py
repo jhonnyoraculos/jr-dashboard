@@ -3190,6 +3190,12 @@ def data_frota(params: dict | None = None) -> dict:
     gasto_diarias_map = _ranking_sum_by_plate(df_diarias, "Custo")
     dias_trabalhados_map = _ranking_count_by_plate(df_diarias)
     total_hoteis = float(pd.to_numeric(df_hoteis_period.get("Valor"), errors="coerce").fillna(0).sum()) if incluir_hoteis and "Valor" in df_hoteis_period.columns else 0.0
+    total_dias_hoteis = (
+        float(pd.to_numeric(df_hoteis_period.get("Dias"), errors="coerce").fillna(0).clip(lower=0).sum())
+        if incluir_hoteis and "Dias" in df_hoteis_period.columns
+        else 0.0
+    )
+    hoteis_diaria = (total_hoteis / total_dias_hoteis) if total_dias_hoteis else 0.0
     mensal_total_frames = [(df_comb, "Custo"), (df_manu, "Custo"), (df_ped, "Custo"), (df_diarias, "Custo")]
     if incluir_hoteis:
         mensal_total_frames.append((df_hoteis_period, "Valor"))
@@ -3299,6 +3305,8 @@ def data_frota(params: dict | None = None) -> dict:
             "gasto_diarias": round(sum(row["gasto_diarias"] for row in ranking), 2),
             "dias_trabalhados": sum(row["dias_trabalhados"] for row in ranking),
             "hoteis": round(total_hoteis, 2),
+            "hoteis_diaria": round(hoteis_diaria, 2),
+            "dias_hoteis": round(total_dias_hoteis, 2),
             "inclui_hoteis": incluir_hoteis,
             "peso_total": round(sum(row["peso_total"] for row in ranking), 3),
             "valor_peso": round(sum(row["valor_peso"] for row in ranking), 2),
