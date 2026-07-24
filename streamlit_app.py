@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-hoteis-diaria-ranking-v1"
+APP_VERSION = "deploy-ganho-entregas-ranking-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4609,6 +4609,7 @@ def render_frota() -> None:
     kpi_items = [
         ("Placas no ranking", fmt_num(totais.get("placas")), JR_BLUE),
         ("Gasto total", fmt_brl_big(totais.get("total")), JR_RED),
+        ("Ganho das entregas", fmt_brl_big(totais.get("valor_peso")), "#15803D"),
         ("Média mensal de gastos", fmt_brl_big(totais.get("media_mensal")), "#0F766E"),
         ("Manutenção", fmt_brl_big(totais.get("manutencao")), JR_RED),
         ("Pedágio/Extras", fmt_brl_big(totais.get("pedagio")), "#D97706"),
