@@ -3041,7 +3041,10 @@ def _ranking_monthly_shared_costs(
         .clip(lower=0)
     )
     salary_by_month = salary_data.groupby("Mes")[source_column].sum().to_dict()
-    general_days_by_month = general_days.groupby("Mes")["Data"].nunique().to_dict()
+    # Cada combinação de placa e data representa um dia trabalhado. Assim, o
+    # salário mensal é dividido por toda a atividade da frota, não apenas pela
+    # quantidade de datas existentes no calendário.
+    general_days_by_month = general_days.groupby("Mes").size().to_dict()
     daily_rate_by_month = {
         str(month): float(salary_by_month.get(str(month), 0.0)) / int(day_count)
         for month, day_count in general_days_by_month.items()
@@ -3056,15 +3059,7 @@ def _ranking_monthly_shared_costs(
         .astype("float64")
         .clip(lower=0)
     )
-    selected_days["_ActivePlates"] = (
-        selected_days.groupby(["Mes", "Data"])["PLACA"]
-        .transform("nunique")
-        .fillna(0)
-        .astype("int64")
-    )
-    selected_days[value_column] = selected_days["_DailyRate"].div(
-        selected_days["_ActivePlates"].where(selected_days["_ActivePlates"] > 0)
-    ).fillna(0.0)
+    selected_days[value_column] = selected_days["_DailyRate"]
     return selected_days[columns].copy()
 
 
@@ -3560,8 +3555,8 @@ def data_frota(params: dict | None = None) -> dict:
     total_gasto_placas = sum(row["total"] for row in ranking)
     total_salario_transporte = sum(row["salario_transporte"] for row in ranking) + salario_nao_rateado
     total_salario_transporte_dias = (
-        int(pd.to_datetime(df_salario_costs["Data"], errors="coerce").dt.normalize().nunique())
-        if not df_salario_costs.empty and "Data" in df_salario_costs.columns
+        int(df_salario_costs.drop_duplicates(["Data", "PLACA"]).shape[0])
+        if not df_salario_costs.empty and {"Data", "PLACA"}.issubset(df_salario_costs.columns)
         else 0
     )
     total_gasto = total_gasto_placas + total_hoteis + salario_nao_rateado
