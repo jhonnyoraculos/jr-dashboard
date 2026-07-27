@@ -3048,78 +3048,23 @@ def _ranking_monthly_shared_costs(
         if day_count
     }
 
-    general_days["_DailyRate"] = (
-        general_days["Mes"]
+    selected_days["_DailyRate"] = (
+        selected_days["Mes"]
         .astype("string")
         .map(daily_rate_by_month)
         .fillna(0.0)
         .astype("float64")
         .clip(lower=0)
     )
-    general_days["_ActivePlates"] = (
-        general_days.groupby(["Mes", "Data"])["PLACA"]
+    selected_days["_ActivePlates"] = (
+        selected_days.groupby(["Mes", "Data"])["PLACA"]
         .transform("nunique")
         .fillna(0)
         .astype("int64")
     )
-    general_days[value_column] = general_days["_DailyRate"].div(
-        general_days["_ActivePlates"].where(general_days["_ActivePlates"] > 0)
+    selected_days[value_column] = selected_days["_DailyRate"].div(
+        selected_days["_ActivePlates"].where(selected_days["_ActivePlates"] > 0)
     ).fillna(0.0)
-    allocations = general_days[["Data", "Mes", "PLACA", value_column]].copy()
-
-    def _daily_activity(df: pd.DataFrame) -> pd.DataFrame:
-        activity = df[["Data", "PLACA"]].copy()
-        activity["Data"] = pd.to_datetime(activity["Data"], errors="coerce").dt.normalize()
-        activity["PLACA"] = activity["PLACA"].astype("string").str.strip()
-        activity["_Weight"] = (
-            pd.to_numeric(df.get("Peso"), errors="coerce")
-            .fillna(0.0)
-            .clip(lower=0)
-        )
-        activity = activity.dropna(subset=["Data", "PLACA"])
-        activity = activity[activity["PLACA"] != ""]
-        return (
-            activity.groupby(["Data", "PLACA"], as_index=False)
-            .agg(_Weight=("_Weight", "sum"), _Deliveries=("PLACA", "size"))
-        )
-
-    general_activity = _daily_activity(df_peso_general).rename(
-        columns={"_Weight": "_GeneralWeight", "_Deliveries": "_GeneralDeliveries"}
-    )
-    selected_activity = _daily_activity(df_peso_selected)
-    selection_shares = selected_activity.merge(
-        general_activity,
-        on=["Data", "PLACA"],
-        how="left",
-    )
-    weighted_share = selection_shares["_Weight"].div(
-        selection_shares["_GeneralWeight"].where(selection_shares["_GeneralWeight"] > 0)
-    )
-    delivery_share = selection_shares["_Deliveries"].div(
-        selection_shares["_GeneralDeliveries"].where(selection_shares["_GeneralDeliveries"] > 0)
-    )
-    selection_shares["_SelectionShare"] = (
-        weighted_share.where(selection_shares["_GeneralWeight"] > 0, delivery_share)
-        .fillna(0.0)
-        .clip(lower=0.0, upper=1.0)
-    )
-    selected_days = (
-        selected_days.drop(columns=[value_column], errors="ignore")
-        .merge(allocations, on=["Data", "Mes", "PLACA"], how="left")
-        .merge(
-            selection_shares[["Data", "PLACA", "_SelectionShare"]],
-            on=["Data", "PLACA"],
-            how="left",
-        )
-    )
-    selected_days[value_column] = (
-        pd.to_numeric(selected_days[value_column], errors="coerce")
-        .fillna(0.0)
-        .clip(lower=0)
-        * pd.to_numeric(selected_days["_SelectionShare"], errors="coerce")
-        .fillna(0.0)
-        .clip(lower=0.0, upper=1.0)
-    )
     return selected_days[columns].copy()
 
 
