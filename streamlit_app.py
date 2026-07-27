@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-salario-por-dias-da-rota-v1"
+APP_VERSION = "deploy-dias-no-card-salario-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4921,6 +4921,8 @@ def render_frota() -> None:
             )
         )
     if _ranking_float(totais, "salario_transporte") > 0:
+        salary_days = int(_ranking_float(totais, "salario_transporte_dias"))
+        salary_days_label = f"{salary_days} dia" if salary_days == 1 else f"{salary_days} dias"
         if selected_routes:
             salary_label = (
                 "Salário do Transporte rateado na rota"
@@ -4935,6 +4937,7 @@ def render_frota() -> None:
             )
         else:
             salary_label = "Salário do Transporte no período"
+        salary_label = f"{salary_label} ({salary_days_label})"
         cost_kpis.append(
             (
                 salary_label,
