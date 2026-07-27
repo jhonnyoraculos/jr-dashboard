@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-salario-rateado-por-dia-v1"
+APP_VERSION = "deploy-salario-por-dias-da-rota-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4834,8 +4834,8 @@ def render_frota() -> None:
             "As diarias contam os dias em que cada Freteiro aparece nas rotas selecionadas. "
             f"{maintenance_method}"
             "Os hoteis usam a media diaria geral do periodo e aplicam essa media aos dias das placas nas rotas. "
-            "O salario mensal total do Transporte e dividido pelos dias de operacao do mes e, em cada dia, "
-            "rateado entre as placas de Transporte ativas nas rotas. "
+            "O salario mensal total do Transporte e dividido pelos dias trabalhados no mes e aplicado "
+            "a quantidade de dias distintos das rotas selecionadas. "
             "Litros, KM e KM/L continuam usando os dados gerais da placa no periodo."
             f"{comparison_hint}"
         )
@@ -7798,8 +7798,8 @@ def render_cadastro() -> None:
                 st.markdown("#### Salário mensal total do Transporte")
                 st.caption(
                     "Cadastre o valor total da folha salarial do Transporte em cada mês. "
-                    "O ranking divide esse valor pelos dias de operação do mês e, em cada dia, "
-                    "o rateia entre as placas de Transporte ativas."
+                    "O ranking divide esse valor pelos dias trabalhados no mês e aplica o valor diário "
+                    "à quantidade de dias distintos da rota selecionada."
                 )
                 with st.form("form_salario_transporte", clear_on_submit=True):
                     salary_col1, salary_col2, salary_col3 = st.columns([1.0, 1.2, 1.0])
