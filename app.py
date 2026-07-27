@@ -2860,49 +2860,6 @@ def _ranking_filter_routes(df: pd.DataFrame, routes: list[str]) -> pd.DataFrame:
     return df.loc[normalized.isin(targets)].copy()
 
 
-def _ranking_route_day_links(df_peso: pd.DataFrame) -> pd.DataFrame:
-    columns = ["_RouteDate", "PLACA", "Rota"]
-    if df_peso.empty or "Data" not in df_peso.columns or "PLACA" not in df_peso.columns:
-        return pd.DataFrame(columns=columns)
-
-    data = df_peso.copy()
-    data["_RouteDate"] = pd.to_datetime(data["Data"], errors="coerce").dt.normalize()
-    data["Rota"] = _ranking_route_labels(data)
-    data = data.dropna(subset=["_RouteDate", "PLACA"])
-    if data.empty:
-        return pd.DataFrame(columns=columns)
-    return data[columns].drop_duplicates().reset_index(drop=True)
-
-
-def _ranking_match_daily_by_routes(
-    df: pd.DataFrame,
-    route_links: pd.DataFrame,
-    routes: list[str],
-) -> pd.DataFrame:
-    if not routes:
-        return df
-    if df.empty or route_links.empty or "Data" not in df.columns or "PLACA" not in df.columns:
-        return df.iloc[0:0].copy()
-
-    targets = {route.casefold() for route in routes}
-    selected_days = route_links[
-        route_links["Rota"].astype("string").fillna("").str.casefold().isin(targets)
-    ][["_RouteDate", "PLACA"]].drop_duplicates()
-    if selected_days.empty:
-        return df.iloc[0:0].copy()
-
-    matched = df.copy()
-    matched["_RouteDate"] = pd.to_datetime(matched["Data"], errors="coerce").dt.normalize()
-    matched = matched.merge(
-        selected_days,
-        on=["_RouteDate", "PLACA"],
-        how="inner",
-    )
-    if matched.empty:
-        return df.iloc[0:0].copy()
-    return matched.drop(columns=["_RouteDate"], errors="ignore")
-
-
 def _ranking_sum_by_plate(df: pd.DataFrame, value_col: str) -> dict[str, float]:
     if df.empty or "PLACA" not in df.columns or value_col not in df.columns:
         return {}
@@ -3295,19 +3252,8 @@ def data_frota(params: dict | None = None) -> dict:
 
     rotas_disponiveis = sorted(_ranking_route_labels(df_peso_total).dropna().unique().tolist())
     if rotas:
-        route_links = _ranking_route_day_links(df_peso)
         df_peso = _ranking_filter_routes(df_peso, rotas)
         df_peso_total = _ranking_filter_routes(df_peso_total, rotas)
-        df_comb = _ranking_match_daily_by_routes(
-            df_comb,
-            route_links,
-            rotas,
-        )
-        df_ped = _ranking_match_daily_by_routes(
-            df_ped,
-            route_links,
-            rotas,
-        )
         route_plates = (
             sorted(
                 {
@@ -3320,10 +3266,14 @@ def data_frota(params: dict | None = None) -> dict:
             else []
         )
         if route_plates:
+            df_comb = _ranking_filter_plates(df_comb, route_plates)
+            df_ped = _ranking_filter_plates(df_ped, route_plates)
             df_comb_metrics = _ranking_filter_plates(df_comb_metrics, route_plates)
             df_manu = _ranking_filter_plates(df_manu, route_plates)
             df_km = _ranking_filter_plates(df_km, route_plates)
         else:
+            df_comb = df_comb.iloc[0:0].copy()
+            df_ped = df_ped.iloc[0:0].copy()
             df_comb_metrics = df_comb_metrics.iloc[0:0].copy()
             df_manu = df_manu.iloc[0:0].copy()
             df_km = df_km.iloc[0:0].copy()

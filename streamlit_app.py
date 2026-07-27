@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-combustivel-pedagio-integral-por-dia-v1"
+APP_VERSION = "deploy-combustivel-pedagio-por-placas-da-rota-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4830,8 +4830,8 @@ def render_frota() -> None:
             else " Selecione mais uma rota no mesmo filtro para abrir o comparativo."
         )
         st.caption(
-            "Os custos de combustivel e pedagio entram pelo valor integral quando a mesma placa aparece "
-            "na rota na data do lancamento, sem rateio entre rotas. "
+            "Os custos de combustivel e pedagio usam as datas proprias dos lancamentos no periodo selecionado "
+            "e entram pelo valor integral para as placas que aparecem nas rotas, sem rateio. "
             "As diarias contam os dias em que cada Freteiro aparece nas rotas selecionadas. "
             f"{maintenance_method}"
             "Os hoteis usam a media diaria geral do periodo e aplicam essa media aos dias das placas nas rotas. "
