@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-peso-total-geral-v1"
+APP_VERSION = "deploy-peso-total-geral-sem-aviso-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4964,27 +4964,6 @@ def render_frota() -> None:
     ]
     with st.container(key="frota_kpis"):
         render_kpis(kpi_items)
-    total_weight = _ranking_float(totais, "peso_total")
-    filtered_weight = _ranking_float(totais, "peso_total_filtrado")
-    no_route_weight = _ranking_float(totais, "peso_sem_rota")
-    weight_scope_note = (
-        "O peso considera todos os registros das rotas selecionadas"
-        if selected_routes
-        else "O peso considera todos os registros do período, com rota e sem rota"
-    )
-    if selected_plates:
-        weight_scope_note += ", limitado às placas selecionadas"
-        weight_scope_note += ", sem retirar categorias."
-    else:
-        weight_scope_note += ", sem retirar categorias ou registros sem placa válida."
-    if abs(total_weight - filtered_weight) > 0.0005:
-        weight_scope_note += (
-            f" Peso total: {fmt_peso(total_weight)}; pertencente às categorias e placas do ranking atual: "
-            f"{fmt_peso(filtered_weight)}."
-        )
-    if not selected_routes and no_route_weight > 0:
-        weight_scope_note += f" Registros sem rota incluídos: {fmt_peso(no_route_weight)}."
-    st.caption(weight_scope_note)
 
     if len(selected_routes) >= 2:
         route_compare = frota_route_compare_bundle(params, selected_routes)
