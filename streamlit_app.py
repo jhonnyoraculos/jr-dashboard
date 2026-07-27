@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-salarios-freteiros-somente-transporte-v1"
+APP_VERSION = "deploy-jornadas-de-placa-no-salario-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4899,7 +4899,11 @@ def render_frota() -> None:
         )
     if _ranking_float(totais, "salario_transporte") > 0:
         salary_days = int(_ranking_float(totais, "salario_transporte_dias"))
-        salary_days_label = f"{salary_days} dia" if salary_days == 1 else f"{salary_days} dias"
+        salary_days_label = (
+            "1 jornada de placa"
+            if salary_days == 1
+            else f"{fmt_num(salary_days)} jornadas de placa"
+        )
         if selected_routes:
             salary_label = (
                 "Salário do Transporte rateado na rota"
