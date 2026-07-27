@@ -3216,7 +3216,8 @@ def data_frota(params: dict | None = None) -> dict:
     df_manu = _ranking_filter_valid_plates(_apply_plate_categories(load_manutencao()))
     df_ped = _ranking_filter_valid_plates(_apply_plate_categories(load_pedagio()))
     df_km = _ranking_filter_valid_plates(_apply_plate_categories(load_combustivel_km()))
-    df_peso = _ranking_filter_valid_plates(_apply_plate_categories(load_peso()))
+    df_peso_all = _apply_plate_categories(load_peso())
+    df_peso = _ranking_filter_valid_plates(df_peso_all)
     df_hoteis = _apply_plate_categories(load_hoteis())
     df_salarios_transporte = (
         load_salarios_transporte()
@@ -3232,7 +3233,7 @@ def data_frota(params: dict | None = None) -> dict:
     df_hoteis_base = _ranking_filter_categories(df_hoteis, categorias_filtro)
 
     anos_disponiveis: set[int] = set()
-    year_frames = [df_comb_base, df_manu_base, df_ped_base, df_km_base, df_peso_base]
+    year_frames = [df_comb_base, df_manu_base, df_ped_base, df_km_base, df_peso_base, df_peso_all]
     if incluir_hoteis:
         year_frames.append(df_hoteis_base)
     if include_transport_salary:
@@ -3241,7 +3242,7 @@ def data_frota(params: dict | None = None) -> dict:
         anos_disponiveis.update(_unique_years(df_src))
         anos_disponiveis.update(df_src.attrs.get("anos_sheets", []))
 
-    month_frames = [df_comb_base, df_manu_base, df_ped_base, df_km_base, df_peso_base]
+    month_frames = [df_comb_base, df_manu_base, df_ped_base, df_km_base, df_peso_base, df_peso_all]
     if incluir_hoteis:
         month_frames.append(df_hoteis_base)
     if include_transport_salary:
@@ -3264,6 +3265,7 @@ def data_frota(params: dict | None = None) -> dict:
     df_ped = _apply_period(df_ped_base)
     df_km = _apply_period(df_km_base)
     df_peso = _apply_period(df_peso_base)
+    df_peso_total = _apply_period(df_peso_all)
     df_peso_transport_general = _apply_period(df_peso_transport_base)
     df_hoteis_period = _apply_period(df_hoteis_base) if incluir_hoteis else df_hoteis_base.iloc[0:0].copy()
     df_salarios_period = (
@@ -3297,10 +3299,11 @@ def data_frota(params: dict | None = None) -> dict:
         else 0.0
     )
 
-    rotas_disponiveis = sorted(_ranking_route_labels(df_peso).dropna().unique().tolist())
+    rotas_disponiveis = sorted(_ranking_route_labels(df_peso_total).dropna().unique().tolist())
     if rotas:
         route_shares = _ranking_weight_route_shares(df_peso)
         df_peso = _ranking_filter_routes(df_peso, rotas)
+        df_peso_total = _ranking_filter_routes(df_peso_total, rotas)
         df_comb = _ranking_allocate_daily_by_routes(
             df_comb,
             route_shares,
@@ -3339,7 +3342,7 @@ def data_frota(params: dict | None = None) -> dict:
         if not df.empty and "PLACA" in df.columns
     ]
     placas_disponiveis = _unique_sorted(pd.concat(plate_source, ignore_index=True), "PLACA") if plate_source else []
-    df_peso_dominancia = df_peso.copy()
+    df_peso_dominancia = _ranking_filter_valid_plates(df_peso_total)
 
     df_comb = _ranking_filter_plates(df_comb, placas)
     df_comb_metrics = _ranking_filter_plates(df_comb_metrics, placas)
@@ -3347,6 +3350,7 @@ def data_frota(params: dict | None = None) -> dict:
     df_ped = _ranking_filter_plates(df_ped, placas)
     df_km = _ranking_filter_plates(df_km, placas)
     df_peso = _ranking_filter_plates(df_peso, placas)
+    df_peso_total = _ranking_filter_plates(df_peso_total, placas)
     df_peso_transport_selected = _ranking_filter_categories(df_peso, ["Transporte"])
     dominancia_peso = _ranking_weight_dominance_by_route(df_peso_dominancia, placas)
     route_days_map = _ranking_active_days_by_plate(df_peso) if rotas else {}
@@ -3440,7 +3444,7 @@ def data_frota(params: dict | None = None) -> dict:
     if incluir_hoteis:
         mensal_total_frames.append((df_hoteis_costs, "Valor"))
     mensal_total = _ranking_monthly_sum(mensal_total_frames, "Valor")
-    mensal_peso = _ranking_monthly_sum([(df_peso, "Peso")], "Peso")
+    mensal_peso = _ranking_monthly_sum([(df_peso_total, "Peso")], "Peso")
     mensal_km = _ranking_monthly_km(df_km, df_comb_metrics)
     mensal_litros = _ranking_monthly_sum([(df_comb_metrics, "Litros")], "Litros")
     litros_map = _ranking_sum_by_plate(df_comb_metrics, "Litros")
@@ -3529,6 +3533,24 @@ def data_frota(params: dict | None = None) -> dict:
     total_placas = len(ranking)
     total_dias_na_rota = sum(row["dias_na_rota"] for row in ranking)
     total_manutencao = sum(row["manutencao"] for row in ranking)
+    total_peso_filtrado = sum(row["peso_total"] for row in ranking)
+    total_peso_geral = (
+        float(pd.to_numeric(df_peso_total.get("Peso"), errors="coerce").fillna(0).sum())
+        if "Peso" in df_peso_total.columns
+        else 0.0
+    )
+    peso_sem_rota = (
+        float(
+            pd.to_numeric(
+                df_peso_total.loc[_ranking_route_labels(df_peso_total) == _RANKING_NO_ROUTE_LABEL, "Peso"],
+                errors="coerce",
+            )
+            .fillna(0)
+            .sum()
+        )
+        if "Peso" in df_peso_total.columns
+        else 0.0
+    )
     periodos_media = set(meses) if meses else {str(mes) for mes in meses_disponiveis if str(mes).strip()}
     total_meses = len(periodos_media)
 
@@ -3561,7 +3583,9 @@ def data_frota(params: dict | None = None) -> dict:
             "hoteis_diaria": round(hoteis_diaria, 2),
             "dias_hoteis": round(total_dias_hoteis, 2),
             "inclui_hoteis": incluir_hoteis,
-            "peso_total": round(sum(row["peso_total"] for row in ranking), 3),
+            "peso_total": round(total_peso_geral, 3),
+            "peso_total_filtrado": round(total_peso_filtrado, 3),
+            "peso_sem_rota": round(peso_sem_rota, 3),
             "valor_peso": round(sum(row["valor_peso"] for row in ranking), 2),
             "km_total": round(total_km, 2),
             "litros_total": round(total_litros, 2),
