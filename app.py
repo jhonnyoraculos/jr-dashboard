@@ -47,6 +47,7 @@ DB_TABLES = {
     "pedagio": "dashboard_pedagio",
     "peso": "dashboard_peso",
     "placas": "dashboard_placas",
+    "salarios_transporte": "dashboard_salarios_transporte",
 }
 DB_METADATA_TABLE = "dashboard_metadata"
 BACKUP_METADATA_KEY = "backup.last_downloaded_at"
@@ -65,6 +66,7 @@ _PESO_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
 _OVERVIEW_CACHE = {"mtimes": None, "dados": None}
 _PLATE_REGISTRY_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
 _PLACAS_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
+_SALARIOS_TRANSPORTE_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
 _TEXT_REGISTRY_CACHES = {
     "combustiveis": {"mtime": None, "df": None, "lock": threading.Lock()},
     "postos": {"mtime": None, "df": None, "lock": threading.Lock()},
@@ -78,6 +80,7 @@ _CACHE_MAP = {
     "hoteis": _HOTEIS_CACHE,
     "pedagio": _PEDAGIO_CACHE,
     "peso": _PESO_CACHE,
+    "salarios_transporte": _SALARIOS_TRANSPORTE_CACHE,
 }
 
 _COMBUSTIVEL_COLUMNS = [
@@ -112,6 +115,7 @@ _HOTEIS_COLUMNS = [
 _PEDAGIO_COLUMNS = ["PLACA", "Tipo", "Custo", "Mes", "Data", "Categoria"]
 _PESO_COLUMNS = ["Data", "Mes", "Cidade", "Rota", "Peso", "Valor", "PLACA", "Categoria"]
 _PLACAS_COLUMNS = ["PLACA", "Categoria", "Diaria"]
+_SALARIOS_TRANSPORTE_COLUMNS = ["Mes", "Valor"]
 _PLATE_ALIASES = {
     "EUX6525": "EUX6F25",
 }
@@ -127,6 +131,7 @@ _DATASET_COLUMNS = {
     "pedagio": _PEDAGIO_COLUMNS,
     "peso": _PESO_COLUMNS,
     "placas": _PLACAS_COLUMNS,
+    "salarios_transporte": _SALARIOS_TRANSPORTE_COLUMNS,
 }
 _COLUMN_SQL_TYPES = {
     "Data": "TIMESTAMP",
@@ -1944,6 +1949,40 @@ def load_empilhadeira_horas() -> pd.DataFrame:
         return horas.copy()
 
 
+def load_salarios_transporte() -> pd.DataFrame:
+    cache = _SALARIOS_TRANSPORTE_CACHE
+    with cache["lock"]:
+        version = _db_version("salarios_transporte")
+        cached = cache.get("df")
+        if cached is not None and cache.get("mtime") == version:
+            return cached.copy()
+        try:
+            salarios = _read_database_table(
+                "salarios_transporte",
+                _SALARIOS_TRANSPORTE_COLUMNS,
+            )
+            salarios = _finalize_common(
+                salarios,
+                numeric_columns=["Valor"],
+            )
+            salarios = salarios.dropna(subset=["Mes"])
+            salarios["Valor"] = (
+                pd.to_numeric(salarios["Valor"], errors="coerce")
+                .fillna(0.0)
+                .clip(lower=0)
+            )
+        except Exception:
+            salarios = _empty(_SALARIOS_TRANSPORTE_COLUMNS)
+        salarios = (
+            salarios[_SALARIOS_TRANSPORTE_COLUMNS]
+            .sort_values("Mes")
+            .reset_index(drop=True)
+        )
+        cache["mtime"] = version
+        cache["df"] = salarios.copy()
+        return salarios.copy()
+
+
 def _load_text_registry(dataset: str, columns: list[str], column: str) -> pd.DataFrame:
     cache = _TEXT_REGISTRY_CACHES.get(dataset)
     version = (_db_version(dataset), _db_version("combustivel"))
@@ -2948,6 +2987,57 @@ def _ranking_daily_plate_costs(
     return work
 
 
+def _ranking_monthly_shared_costs(
+    df_peso_selected: pd.DataFrame,
+    df_peso_general: pd.DataFrame,
+    monthly_costs: pd.DataFrame,
+    *,
+    source_column: str = "Valor",
+    value_column: str = "Custo",
+) -> pd.DataFrame:
+    columns = ["Data", "Mes", "PLACA", value_column]
+    if monthly_costs.empty or "Mes" not in monthly_costs.columns or source_column not in monthly_costs.columns:
+        return pd.DataFrame(columns=columns)
+
+    general_days = _ranking_daily_average_costs(
+        df_peso_general,
+        0.0,
+        value_column,
+    )
+    selected_days = _ranking_daily_average_costs(
+        df_peso_selected,
+        0.0,
+        value_column,
+    )
+    if general_days.empty or selected_days.empty:
+        return pd.DataFrame(columns=columns)
+
+    salary_data = monthly_costs[["Mes", source_column]].copy()
+    salary_data["Mes"] = salary_data["Mes"].astype("string").str.strip()
+    salary_data[source_column] = (
+        pd.to_numeric(salary_data[source_column], errors="coerce")
+        .fillna(0.0)
+        .clip(lower=0)
+    )
+    salary_by_month = salary_data.groupby("Mes")[source_column].sum().to_dict()
+    general_days_by_month = general_days.groupby("Mes").size().to_dict()
+    daily_rate_by_month = {
+        str(month): float(salary_by_month.get(str(month), 0.0)) / int(day_count)
+        for month, day_count in general_days_by_month.items()
+        if day_count
+    }
+
+    selected_days[value_column] = (
+        selected_days["Mes"]
+        .astype("string")
+        .map(daily_rate_by_month)
+        .fillna(0.0)
+        .astype("float64")
+        .clip(lower=0)
+    )
+    return selected_days[columns].copy()
+
+
 def _ranking_freighter_daily_rates(registry: pd.DataFrame | None = None) -> dict[str, float]:
     if registry is None:
         try:
@@ -3113,6 +3203,10 @@ def data_frota(params: dict | None = None) -> dict:
     ano = _parse_int(_param(params, "ano"))
     meses = _parse_mes_list(params.get("mes"))
     categorias_filtro = _ranking_parse_category_list(params.get("categoria"))
+    include_transport_salary = (
+        not categorias_filtro
+        or any(_normalize_category_value(category) == "Transporte" for category in categorias_filtro)
+    )
     incluir_hoteis = _truthy_param(params.get("incluir_hoteis"))
     rotas = _ranking_parse_route_list(params.get("rota"))
     placas = _ranking_parse_plate_list(params.get("placa"))
@@ -3124,6 +3218,12 @@ def data_frota(params: dict | None = None) -> dict:
     df_km = _ranking_filter_valid_plates(_apply_plate_categories(load_combustivel_km()))
     df_peso = _ranking_filter_valid_plates(_apply_plate_categories(load_peso()))
     df_hoteis = _apply_plate_categories(load_hoteis())
+    df_salarios_transporte = (
+        load_salarios_transporte()
+        if include_transport_salary
+        else _empty(_SALARIOS_TRANSPORTE_COLUMNS)
+    )
+    df_peso_transport_base = _ranking_filter_categories(df_peso, ["Transporte"])
 
     source_frames = [df_comb, df_manu, df_ped, df_peso]
     categoria_frames = [_ranking_filter_categories(df, categorias_filtro) for df in source_frames]
@@ -3135,6 +3235,8 @@ def data_frota(params: dict | None = None) -> dict:
     year_frames = [df_comb_base, df_manu_base, df_ped_base, df_km_base, df_peso_base]
     if incluir_hoteis:
         year_frames.append(df_hoteis_base)
+    if include_transport_salary:
+        year_frames.append(df_salarios_transporte)
     for df_src in year_frames:
         anos_disponiveis.update(_unique_years(df_src))
         anos_disponiveis.update(df_src.attrs.get("anos_sheets", []))
@@ -3142,6 +3244,8 @@ def data_frota(params: dict | None = None) -> dict:
     month_frames = [df_comb_base, df_manu_base, df_ped_base, df_km_base, df_peso_base]
     if incluir_hoteis:
         month_frames.append(df_hoteis_base)
+    if include_transport_salary:
+        month_frames.append(df_salarios_transporte)
     if ano is not None:
         month_frames = [_filter_by_period(df, ano=ano) for df in month_frames]
     month_source = [df[["Mes"]] for df in month_frames if not df.empty and "Mes" in df.columns]
@@ -3160,7 +3264,13 @@ def data_frota(params: dict | None = None) -> dict:
     df_ped = _apply_period(df_ped_base)
     df_km = _apply_period(df_km_base)
     df_peso = _apply_period(df_peso_base)
+    df_peso_transport_general = _apply_period(df_peso_transport_base)
     df_hoteis_period = _apply_period(df_hoteis_base) if incluir_hoteis else df_hoteis_base.iloc[0:0].copy()
+    df_salarios_period = (
+        _apply_period(df_salarios_transporte)
+        if include_transport_salary
+        else _empty(_SALARIOS_TRANSPORTE_COLUMNS)
+    )
 
     df_manu_general = df_manu.copy()
     df_peso_general = df_peso.copy()
@@ -3237,6 +3347,7 @@ def data_frota(params: dict | None = None) -> dict:
     df_ped = _ranking_filter_plates(df_ped, placas)
     df_km = _ranking_filter_plates(df_km, placas)
     df_peso = _ranking_filter_plates(df_peso, placas)
+    df_peso_transport_selected = _ranking_filter_categories(df_peso, ["Transporte"])
     dominancia_peso = _ranking_weight_dominance_by_route(df_peso_dominancia, placas)
     route_days_map = _ranking_active_days_by_plate(df_peso) if rotas else {}
 
@@ -3262,6 +3373,46 @@ def data_frota(params: dict | None = None) -> dict:
     df_diarias = _ranking_freighter_daily_costs(df_peso, daily_rates)
     gasto_diarias_map = _ranking_sum_by_plate(df_diarias, "Custo")
     dias_trabalhados_map = _ranking_count_by_plate(df_diarias)
+    df_salario_costs = _ranking_monthly_shared_costs(
+        df_peso_transport_selected,
+        df_peso_transport_general,
+        df_salarios_period,
+    )
+    salario_transporte_map = _ranking_sum_by_plate(df_salario_costs, "Custo")
+    total_salario_cadastrado = (
+        float(pd.to_numeric(df_salarios_period.get("Valor"), errors="coerce").fillna(0).sum())
+        if "Valor" in df_salarios_period.columns
+        else 0.0
+    )
+    total_salario_rateado = (
+        float(pd.to_numeric(df_salario_costs.get("Custo"), errors="coerce").fillna(0).sum())
+        if "Custo" in df_salario_costs.columns
+        else 0.0
+    )
+    salario_nao_rateado = (
+        max(total_salario_cadastrado - total_salario_rateado, 0.0)
+        if include_transport_salary and not rotas and not placas
+        else 0.0
+    )
+    df_salario_nao_rateado = pd.DataFrame(columns=["Mes", "Custo"])
+    if salario_nao_rateado > 0 and not df_salarios_period.empty:
+        allocated_by_month = (
+            df_salario_costs.groupby("Mes")["Custo"].sum().to_dict()
+            if not df_salario_costs.empty
+            else {}
+        )
+        salary_by_month = (
+            df_salarios_period.groupby("Mes")["Valor"].sum().to_dict()
+        )
+        remainder_rows = [
+            {
+                "Mes": str(month),
+                "Custo": max(float(value or 0.0) - float(allocated_by_month.get(month, 0.0)), 0.0),
+            }
+            for month, value in salary_by_month.items()
+            if float(value or 0.0) - float(allocated_by_month.get(month, 0.0)) > 0
+        ]
+        df_salario_nao_rateado = pd.DataFrame(remainder_rows, columns=["Mes", "Custo"])
     df_hoteis_costs = (
         _ranking_daily_average_costs(df_peso, hotel_daily_average, "Valor")
         if incluir_hoteis and rotas
@@ -3278,7 +3429,14 @@ def data_frota(params: dict | None = None) -> dict:
         else general_hotel_days
     )
     hoteis_diaria = hotel_daily_average
-    mensal_total_frames = [(df_comb, "Custo"), (df_manu_costs, "Custo"), (df_ped, "Custo"), (df_diarias, "Custo")]
+    mensal_total_frames = [
+        (df_comb, "Custo"),
+        (df_manu_costs, "Custo"),
+        (df_ped, "Custo"),
+        (df_diarias, "Custo"),
+        (df_salario_costs, "Custo"),
+        (df_salario_nao_rateado, "Custo"),
+    ]
     if incluir_hoteis:
         mensal_total_frames.append((df_hoteis_costs, "Valor"))
     mensal_total = _ranking_monthly_sum(mensal_total_frames, "Valor")
@@ -3291,7 +3449,16 @@ def data_frota(params: dict | None = None) -> dict:
     servicos_map = _ranking_count_by_plate(df_manu)
     pedagio_count_map = _ranking_count_by_plate(df_ped)
 
-    placa_set = set(total_comb) | set(total_manu) | set(total_ped) | set(litros_map) | set(km_override_map) | set(peso_map) | set(gasto_diarias_map)
+    placa_set = (
+        set(total_comb)
+        | set(total_manu)
+        | set(total_ped)
+        | set(litros_map)
+        | set(km_override_map)
+        | set(peso_map)
+        | set(gasto_diarias_map)
+        | set(salario_transporte_map)
+    )
     ranking = []
     for placa in sorted(placa_set):
         categoria = category_map.get(placa, "Transporte")
@@ -3305,7 +3472,8 @@ def data_frota(params: dict | None = None) -> dict:
         diaria = daily_rates.get(placa, 0.0) if _normalize_category_value(categoria) == "Freteiro" else 0.0
         dias_trabalhados = dias_trabalhados_map.get(placa, 0)
         gasto_diarias = gasto_diarias_map.get(placa, 0.0)
-        total = combustivel_total + manutencao_total + pedagio_total + gasto_diarias
+        salario_transporte = salario_transporte_map.get(placa, 0.0)
+        total = combustivel_total + manutencao_total + pedagio_total + gasto_diarias + salario_transporte
         km_total = km_override_map.get(placa, 0.0)
         litros_total = litros_map.get(placa, 0.0)
         lancamentos = abastecimentos_map.get(placa, 0) + servicos_map.get(placa, 0) + pedagio_count_map.get(placa, 0)
@@ -3322,6 +3490,7 @@ def data_frota(params: dict | None = None) -> dict:
                 "diaria": round(diaria, 2),
                 "dias_trabalhados": dias_trabalhados,
                 "gasto_diarias": round(gasto_diarias, 2),
+                "salario_transporte": round(salario_transporte, 2),
                 "peso_total": round(peso_total, 3),
                 "valor_peso": round(valor_peso_total, 2),
                 "km_total": round(km_total, 2),
@@ -3355,7 +3524,8 @@ def data_frota(params: dict | None = None) -> dict:
     total_km = sum(row["km_total"] for row in ranking)
     total_litros = sum(row["litros_total"] for row in ranking)
     total_gasto_placas = sum(row["total"] for row in ranking)
-    total_gasto = total_gasto_placas + total_hoteis
+    total_salario_transporte = sum(row["salario_transporte"] for row in ranking) + salario_nao_rateado
+    total_gasto = total_gasto_placas + total_hoteis + salario_nao_rateado
     total_placas = len(ranking)
     total_dias_na_rota = sum(row["dias_na_rota"] for row in ranking)
     total_manutencao = sum(row["manutencao"] for row in ranking)
@@ -3385,6 +3555,7 @@ def data_frota(params: dict | None = None) -> dict:
             "dias_na_rota": total_dias_na_rota,
             "pedagio": round(sum(row["pedagio"] for row in ranking), 2),
             "gasto_diarias": round(sum(row["gasto_diarias"] for row in ranking), 2),
+            "salario_transporte": round(total_salario_transporte, 2),
             "dias_trabalhados": sum(row["dias_trabalhados"] for row in ranking),
             "hoteis": round(total_hoteis, 2),
             "hoteis_diaria": round(hoteis_diaria, 2),
@@ -3408,6 +3579,7 @@ def _warm_data_caches(*, blocking: bool = False) -> None:
         (load_hoteis, "hoteis"),
         (load_pedagio, "pedagio/seguro/IPVA"),
         (load_peso, "peso"),
+        (load_salarios_transporte, "salarios do transporte"),
     )
 
     def _run() -> None:

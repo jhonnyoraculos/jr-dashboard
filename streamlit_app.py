@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-card-diarias-freteiro-v1"
+APP_VERSION = "deploy-salario-mensal-transporte-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -38,6 +38,12 @@ PEDAGIO_OPTIONAL_PLATE_TYPES = {"Extras", "Taxi"}
 BACKUP_INTERVAL_DAYS = 7
 BACKUP_TABLES = [
     ("placas", "Placas", "placas", backend.load_placas),
+    (
+        "salarios_transporte",
+        "Salarios Transporte",
+        "salarios_transporte",
+        backend.load_salarios_transporte,
+    ),
     ("combustivel", "Combustivel", "combustivel", backend.load_combustivel),
     ("combustivel_km", "KM mensal", "km_mensal", backend.load_combustivel_km),
     ("empilhadeira_horas", "Horas empilhadeiras", "horas_empilhadeiras", backend.load_empilhadeira_horas),
@@ -3983,6 +3989,7 @@ def frota_route_comparison_html(
             "pedagio": totals.get("pedagio"),
             "gasto_diarias": totals.get("gasto_diarias"),
             "dias_trabalhados": totals.get("dias_trabalhados"),
+            "salario_transporte": totals.get("salario_transporte"),
             "hoteis": totals.get("hoteis"),
             "hoteis_diaria": totals.get("hoteis_diaria"),
             "dias_hoteis": totals.get("dias_hoteis"),
@@ -4056,6 +4063,15 @@ def frota_route_comparison_html(
                 ("Gasto com diárias com freteiro", "gasto_diarias", fmt_brl_big, ""),
                 ("Dias trabalhados", "dias_trabalhados", fmt_num, ""),
             ]
+        )
+    if any(_ranking_float(row, "salario_transporte") > 0 for row in route_rows):
+        metrics.append(
+            (
+                "Salário do Transporte",
+                "salario_transporte",
+                fmt_brl_big,
+                "",
+            )
         )
     if show_hotels:
         metrics.extend(
@@ -4445,6 +4461,10 @@ def ranking_summary_html(
             ("Gasto com diárias com freteiro", fmt_brl_big(row.get("gasto_diarias"))),
             ("Dias trabalhados", fmt_num(row.get("dias_trabalhados"))),
         ]
+    if _ranking_float(row, "salario_transporte") > 0:
+        items[3:3] = [
+            ("Salário do Transporte", fmt_brl_big(row.get("salario_transporte"))),
+        ]
     if not hide_fuel:
         items.insert(3, ("Combustível", fmt_brl_big(row.get("combustivel"))))
     return "".join(
@@ -4479,6 +4499,10 @@ def ranking_detail_html(
             ("Valor da diária", fmt_brl_big(row.get("diaria"))),
             ("Dias trabalhados", fmt_num(row.get("dias_trabalhados"))),
             ("Gasto com diárias com freteiro", fmt_brl_big(row.get("gasto_diarias"))),
+        ]
+    if _ranking_float(row, "salario_transporte") > 0:
+        items[1:1] = [
+            ("Salário do Transporte", fmt_brl_big(row.get("salario_transporte"))),
         ]
     if not hide_fuel:
         items[1:1] = [
@@ -4530,6 +4554,8 @@ def ranking_row_label(
             2,
             f"Diarias {money(row.get('gasto_diarias'))} ({fmt_num(row.get('dias_trabalhados'))} dias)",
         )
+    if _ranking_float(row, "salario_transporte") > 0:
+        parts.insert(2, f"Salario Transporte {money(row.get('salario_transporte'))}")
     if not hide_fuel:
         parts.insert(2, f"Combustivel {money(row.get('combustivel'))}")
         parts.extend([f"KM {fmt_num(row.get('km_total'))}", f"Litros {fmt_num(row.get('litros_total'))}"])
@@ -4567,6 +4593,10 @@ def ranking_difference_html(
         metrics[1:1] = [
             ("Gasto com diárias com freteiro", "gasto_diarias", fmt_brl_big),
             ("Dias trabalhados", "dias_trabalhados", fmt_num),
+        ]
+    if any(_ranking_float(row, "salario_transporte") > 0 for row in rows):
+        metrics[1:1] = [
+            ("Salário do Transporte", "salario_transporte", fmt_brl_big),
         ]
     if not hide_fuel:
         metrics[1:1] = [
@@ -4619,6 +4649,10 @@ def ranking_versus_html(
             ("Valor da diária", "diaria", fmt_brl_big),
             ("Dias trabalhados", "dias_trabalhados", fmt_num),
             ("Gasto com diárias com freteiro", "gasto_diarias", fmt_brl_big),
+        ]
+    if any(_ranking_float(row, "salario_transporte") > 0 for row in rows):
+        metrics[1:1] = [
+            ("Salário do Transporte", "salario_transporte", fmt_brl_big),
         ]
     if not hide_fuel:
         metrics[1:1] = [
@@ -4800,6 +4834,8 @@ def render_frota() -> None:
             "As diarias contam os dias em que cada Freteiro aparece nas rotas selecionadas. "
             f"{maintenance_method}"
             "Os hoteis usam a media diaria geral do periodo e aplicam essa media aos dias das placas nas rotas. "
+            "O salario mensal total do Transporte e rateado conforme a participacao dos dias trabalhados "
+            "pelas placas de Transporte nas rotas. "
             "Litros, KM e KM/L continuam usando os dados gerais da placa no periodo."
             f"{comparison_hint}"
         )
@@ -4875,6 +4911,28 @@ def render_frota() -> None:
                 "Gasto com diárias com freteiro",
                 fmt_brl_big(totais.get("gasto_diarias")),
                 "#7C3AED",
+            )
+        )
+    if _ranking_float(totais, "salario_transporte") > 0:
+        if selected_routes:
+            salary_label = (
+                "Salário do Transporte rateado na rota"
+                if len(selected_routes) == 1
+                else "Salário do Transporte rateado nas rotas"
+            )
+        elif selected_plates:
+            salary_label = (
+                "Salário do Transporte rateado na placa"
+                if len(selected_plates) == 1
+                else "Salário do Transporte rateado nas placas"
+            )
+        else:
+            salary_label = "Salário do Transporte no período"
+        cost_kpis.append(
+            (
+                salary_label,
+                fmt_brl_big(totais.get("salario_transporte")),
+                "#4B5563",
             )
         )
     if include_hoteis:
@@ -7729,6 +7787,63 @@ def render_cadastro() -> None:
         plate_map = _registered_plate_map()
 
         if active_tab == "Placas":
+            with st.container(border=True):
+                st.markdown("#### Salário mensal total do Transporte")
+                st.caption(
+                    "Cadastre o valor total da folha salarial do Transporte em cada mês. "
+                    "O ranking inclui esse valor no gasto total e o rateia por dias trabalhados ao filtrar rota ou placa."
+                )
+                with st.form("form_salario_transporte", clear_on_submit=True):
+                    salary_col1, salary_col2, salary_col3 = st.columns([1.0, 1.2, 1.0])
+                    with salary_col1:
+                        salario_mes_data = st.date_input(
+                            "Mês de referência",
+                            value=date.today().replace(day=1),
+                            key="cad_salario_transporte_mes",
+                        )
+                    with salary_col2:
+                        salario_valor = st.number_input(
+                            "Salário mensal total (R$)",
+                            min_value=0.0,
+                            step=100.0,
+                            format="%.2f",
+                            key="cad_salario_transporte_valor",
+                        )
+                    with salary_col3:
+                        st.write("")
+                        salario_submitted = st.form_submit_button(
+                            "Salvar salário mensal",
+                            type="primary",
+                            width="stretch",
+                        )
+                    if salario_submitted:
+                        _save_entry(
+                            "salarios_transporte",
+                            {
+                                "Mes": _entry_month(salario_mes_data),
+                                "Valor": salario_valor,
+                            },
+                            required=["Mes", "Valor"],
+                            replace_keys=["Mes"],
+                            success="Salário mensal do Transporte salvo.",
+                        )
+
+                _render_dataset_editor(
+                    "salarios_transporte",
+                    backend.load_salarios_transporte,
+                    ["Mes", "Valor"],
+                    ["Mes", "Valor"],
+                    "cad_salarios_transporte_table",
+                    {
+                        "Mes": st.column_config.TextColumn(
+                            "Mês",
+                            help="Use o formato AAAA-MM.",
+                        ),
+                        "Valor": _money_col("Salário mensal total"),
+                    },
+                    ["Mes"],
+                )
+
             with st.form("form_placas", clear_on_submit=True):
                 c1, c2, c3, c4 = st.columns([1.2, 1.0, 1.0, 1.0])
                 with c1:
