@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-combustivel-pedagio-por-placas-da-rota-v1"
+APP_VERSION = "deploy-ranking-sem-texto-explicativo-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4816,30 +4816,6 @@ def render_frota() -> None:
         or any(float(row.get("diaria") or 0) > 0 for row in ranking)
     )
     show_route_maintenance_daily = bool(selected_routes)
-    if selected_routes:
-        maintenance_method = (
-            "A manutencao usa o total de cada placa selecionada no periodo, dividido por todos os dias trabalhados "
-            "por ela, e aplica essa media aos dias dela nas rotas. "
-            if selected_plates
-            else "A manutencao identifica as placas das rotas, calcula a media diaria individual de cada uma usando "
-            "o total e todos os dias dela no periodo, e aplica essa media aos dias trabalhados nas rotas. "
-        )
-        comparison_hint = (
-            " O comparativo individual das rotas aparece logo abaixo dos cards gerais."
-            if len(selected_routes) >= 2
-            else " Selecione mais uma rota no mesmo filtro para abrir o comparativo."
-        )
-        st.caption(
-            "Os custos de combustivel e pedagio usam as datas proprias dos lancamentos no periodo selecionado "
-            "e entram pelo valor integral para as placas que aparecem nas rotas, sem rateio. "
-            "As diarias contam os dias em que cada Freteiro aparece nas rotas selecionadas. "
-            f"{maintenance_method}"
-            "Os hoteis usam a media diaria geral do periodo e aplicam essa media aos dias das placas nas rotas. "
-            "O salario mensal total do Transporte e dividido pelo total geral de dias trabalhados por placa "
-            "no mes e aplicado aos dias das placas nas rotas selecionadas. "
-            "Litros, KM e KM/L continuam usando os dados gerais da placa no periodo."
-            f"{comparison_hint}"
-        )
 
     if selected_routes:
         weight_label = "Peso total da rota" if len(selected_routes) == 1 else "Peso total das rotas"
