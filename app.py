@@ -3820,13 +3820,15 @@ def compute_overview_totals(*, ano: int | None = None, mes: int | None = None, m
         mes=mes,
         meses=meses_lista,
     )
-    detalhes["total_geral"] = float(total_geral + salario_transporte + custo_freteiros)
     detalhes["segmentos"] = segmentos_dict
     detalhes["salario_transporte"] = salario_transporte
     detalhes["custo_freteiros"] = custo_freteiros
     detalhes["total_transporte_operacional"] = total_transporte_operacional
-    detalhes["total_transporte"] = total_transporte_operacional + salario_transporte + custo_freteiros
-    detalhes["total_vex"] = segmentos_dict.get("Vex", 0.0)
+    total_transporte = total_transporte_operacional + salario_transporte + custo_freteiros
+    total_vex = float(segmentos_dict.get("Vex", 0.0))
+    detalhes["total_transporte"] = total_transporte
+    detalhes["total_vex"] = total_vex
+    detalhes["total_geral"] = total_transporte + total_vex
     detalhes["periodos_disponiveis"] = periodos_ordenados
     detalhes["anos_disponiveis"] = anos_disponiveis
     detalhes["meses_disponiveis"] = meses_disponiveis
