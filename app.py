@@ -3723,6 +3723,43 @@ def _overview_transport_operating_total(
     return total
 
 
+def _overview_transport_ranking_total(
+    *,
+    ano: int | None = None,
+    meses: list[int] | None = None,
+    periodos: list[str] | None = None,
+    fallback: float = 0.0,
+) -> float:
+    meses = meses or []
+    periodos = periodos or []
+    ranking_months: list[str] = []
+    if meses:
+        if ano is not None:
+            ranking_months = [f"{ano}-{month:02d}" for month in meses]
+        else:
+            selected_months = set(meses)
+            ranking_months = [
+                period
+                for period in periodos
+                if "-" in period and int(period.split("-")[1]) in selected_months
+            ]
+
+    params: dict[str, object] = {
+        "categoria": ["Transporte", "Freteiro"],
+        "incluir_hoteis": True,
+    }
+    if ano is not None:
+        params["ano"] = ano
+    if ranking_months:
+        params["mes"] = ranking_months
+
+    try:
+        ranking_totals = data_frota(params).get("totais") or {}
+        return float(ranking_totals.get("total") or 0.0)
+    except Exception:
+        return float(fallback)
+
+
 def compute_overview_totals(*, ano: int | None = None, mes: int | None = None, meses_lista: list[int] | None = None) -> dict:
     ano = _parse_int(ano)
     mes = _parse_int(mes, min_value=1, max_value=12)
@@ -3824,7 +3861,13 @@ def compute_overview_totals(*, ano: int | None = None, mes: int | None = None, m
     detalhes["salario_transporte"] = salario_transporte
     detalhes["custo_freteiros"] = custo_freteiros
     detalhes["total_transporte_operacional"] = total_transporte_operacional
-    total_transporte = total_transporte_operacional + salario_transporte + custo_freteiros
+    total_transporte_fallback = total_transporte_operacional + salario_transporte + custo_freteiros
+    total_transporte = _overview_transport_ranking_total(
+        ano=ano,
+        meses=meses_lista,
+        periodos=periodos_ordenados,
+        fallback=total_transporte_fallback,
+    )
     total_vex = float(segmentos_dict.get("Vex", 0.0))
     detalhes["total_transporte"] = total_transporte
     detalhes["total_vex"] = total_vex
