@@ -352,7 +352,16 @@ def _write_metadata(conn, key: str, value) -> None:
 
 
 def _clear_dataset_cache(dataset: str) -> None:
-    if dataset in {"placas", "combustivel", "manutencao", "pneus", "pedagio", "peso"}:
+    if dataset in {
+        "placas",
+        "combustivel",
+        "combustivel_km",
+        "empilhadeira_horas",
+        "manutencao",
+        "pneus",
+        "pedagio",
+        "peso",
+    }:
         _PLATE_REGISTRY_CACHE["mtime"] = None
         _PLATE_REGISTRY_CACHE["df"] = None
         _PLACAS_CACHE["mtime"] = None
@@ -1508,7 +1517,15 @@ def _apply_plate_categories(df: pd.DataFrame) -> pd.DataFrame:
 
 def _derived_plate_registry() -> pd.DataFrame:
     frames = []
-    for loader in (load_combustivel, load_manutencao, load_pneus, load_pedagio, load_peso):
+    for loader in (
+        load_combustivel,
+        load_combustivel_km,
+        load_empilhadeira_horas,
+        load_manutencao,
+        load_pneus,
+        load_pedagio,
+        load_peso,
+    ):
         try:
             df = loader()
         except Exception:
@@ -1555,8 +1572,12 @@ def load_placas() -> pd.DataFrame:
     version = (
         _db_version("placas"),
         _db_version("combustivel"),
+        _db_version("combustivel_km"),
+        _db_version("empilhadeira_horas"),
         _db_version("manutencao"),
+        _db_version("pneus"),
         _db_version("pedagio"),
+        _db_version("peso"),
     )
     with _PLACAS_CACHE["lock"]:
         cached = _PLACAS_CACHE.get("df")
