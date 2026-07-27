@@ -3689,6 +3689,40 @@ def _overview_transport_labor_totals(
     }
 
 
+def _overview_transport_operating_total(
+    *,
+    ano: int | None = None,
+    mes: int | None = None,
+    meses: list[int] | None = None,
+) -> float:
+    categories = ["Transporte", "Freteiro"]
+    total = 0.0
+    sources = (
+        (load_combustivel, "Custo", True),
+        (load_manutencao, "Custo", True),
+        (load_pedagio, "Custo", True),
+        (load_hoteis, "Valor", False),
+    )
+    for loader, value_column, requires_plate in sources:
+        try:
+            data = _apply_plate_categories(loader())
+            if requires_plate:
+                data = _ranking_filter_valid_plates(data)
+            data = _ranking_filter_categories(data, categories)
+            data = _filter_by_period(data, ano=ano, mes=mes, meses=meses or [])
+        except Exception:
+            continue
+        if value_column not in data.columns:
+            continue
+        total += float(
+            pd.to_numeric(data[value_column], errors="coerce")
+            .fillna(0.0)
+            .clip(lower=0)
+            .sum()
+        )
+    return total
+
+
 def compute_overview_totals(*, ano: int | None = None, mes: int | None = None, meses_lista: list[int] | None = None) -> dict:
     ano = _parse_int(ano)
     mes = _parse_int(mes, min_value=1, max_value=12)
@@ -3760,7 +3794,6 @@ def compute_overview_totals(*, ano: int | None = None, mes: int | None = None, m
         periodos_base = [periodo for periodo in periodos_ordenados if periodo.startswith(f"{ano}-")]
     meses_disponiveis = sorted({int(p.split("-")[1]) for p in periodos_base if "-" in p})
 
-    detalhes["total_geral"] = float(total_geral)
     detalhes["peso_total"] = float((detalhes.get("peso") or {}).get("valor") or 0.0)
     km_totais = _overview_km_totals(ano=ano, mes=mes, meses=meses_lista)
     detalhes["km_total"] = km_totais["total"]
@@ -3782,10 +3815,17 @@ def compute_overview_totals(*, ano: int | None = None, mes: int | None = None, m
     meses_disponiveis = sorted({int(p.split("-")[1]) for p in periodos_base if "-" in p})
     salario_transporte = float(labor_totals.get("salario_transporte") or 0.0)
     custo_freteiros = float(labor_totals.get("custo_freteiros") or 0.0)
+    total_transporte_operacional = _overview_transport_operating_total(
+        ano=ano,
+        mes=mes,
+        meses=meses_lista,
+    )
+    detalhes["total_geral"] = float(total_geral + salario_transporte + custo_freteiros)
     detalhes["segmentos"] = segmentos_dict
     detalhes["salario_transporte"] = salario_transporte
     detalhes["custo_freteiros"] = custo_freteiros
-    detalhes["total_transporte"] = segmentos_dict.get("Transporte", 0.0) + salario_transporte + custo_freteiros
+    detalhes["total_transporte_operacional"] = total_transporte_operacional
+    detalhes["total_transporte"] = total_transporte_operacional + salario_transporte + custo_freteiros
     detalhes["total_vex"] = segmentos_dict.get("Vex", 0.0)
     detalhes["periodos_disponiveis"] = periodos_ordenados
     detalhes["anos_disponiveis"] = anos_disponiveis
