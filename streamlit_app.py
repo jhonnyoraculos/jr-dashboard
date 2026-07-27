@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-salarios-freteiros-home-v1"
+APP_VERSION = "deploy-salarios-freteiros-somente-transporte-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -2617,7 +2617,7 @@ def render_home_totals(cards: list[tuple[str, str, str]]) -> None:
             extra_class = " home-total-card--weight"
         elif label == "Gasto Vex":
             extra_class = " home-total-card--vex"
-        elif label.startswith(("Gasto", "Salários", "Custo")):
+        elif label.startswith("Gasto"):
             extra_class = " home-total-card--money"
         else:
             extra_class = ""
@@ -5183,16 +5183,6 @@ def render_home() -> None:
             "Gasto transporte",
             fmt_brl(overview.get("total_transporte")),
             "Despesas do Transporte, salários e diárias de freteiros.",
-        ),
-        (
-            "Salários do transporte",
-            fmt_brl(overview.get("salario_transporte")),
-            "Total dos salários mensais no filtro aplicado.",
-        ),
-        (
-            "Custo com freteiros",
-            fmt_brl(overview.get("custo_freteiros")),
-            "Diárias das placas cadastradas como Freteiro.",
         ),
         ("Gasto Vex", fmt_brl(overview.get("total_vex")), 'Somatório das despesas marcadas como "Vex".'),
     ]
