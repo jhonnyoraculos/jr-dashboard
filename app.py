@@ -80,6 +80,7 @@ _CACHE_MAP = {
     "hoteis": _HOTEIS_CACHE,
     "pedagio": _PEDAGIO_CACHE,
     "peso": _PESO_CACHE,
+    "placas": _PLACAS_CACHE,
     "salarios_transporte": _SALARIOS_TRANSPORTE_CACHE,
 }
 
