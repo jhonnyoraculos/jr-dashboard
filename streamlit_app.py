@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-ordem-ranking-gastos-operacao-resultado-v1"
+APP_VERSION = "deploy-ranking-sem-contagem-dias-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4893,7 +4893,6 @@ def render_frota() -> None:
         ("Pedágio/Extras", fmt_brl_big(totais.get("pedagio")), "#D97706"),
     ]
     if show_route_maintenance_daily:
-        route_days = fmt_num(totais.get("dias_na_rota"))
         maintenance_daily_label = (
             "Média diária da placa"
             if len(selected_plates) == 1
@@ -4906,7 +4905,7 @@ def render_frota() -> None:
         cost_kpis.insert(
             3,
             (
-                f"{maintenance_daily_label} ({route_days} dias aplicados)",
+                maintenance_daily_label,
                 fmt_brl_big(totais.get("manutencao_diaria")),
                 "#7C3AED",
             ),
@@ -4920,12 +4919,6 @@ def render_frota() -> None:
             )
         )
     if _ranking_float(totais, "salario_transporte") > 0:
-        salary_days = int(_ranking_float(totais, "salario_transporte_dias"))
-        salary_days_label = (
-            "1 jornada de placa"
-            if salary_days == 1
-            else f"{fmt_num(salary_days)} jornadas de placa"
-        )
         if selected_routes:
             salary_label = (
                 "Salário do Transporte rateado na rota"
@@ -4940,7 +4933,6 @@ def render_frota() -> None:
             )
         else:
             salary_label = "Salário do Transporte no período"
-        salary_label = f"{salary_label} ({salary_days_label})"
         cost_kpis.append(
             (
                 salary_label,
@@ -4949,12 +4941,11 @@ def render_frota() -> None:
             )
         )
     if include_hoteis:
-        hotel_days = fmt_num(totais.get("dias_hoteis"))
         hotel_total_label = "Hotéis estimados nas rotas" if selected_routes else "Hotéis total no período"
         hotel_daily_label = (
-            f"Média diária geral de hotéis ({hotel_days} dias aplicados)"
+            "Média diária geral de hotéis"
             if selected_routes
-            else f"Hotéis/dia ({hotel_days} dias)"
+            else "Hotéis/dia"
         )
         cost_kpis.extend(
             [
