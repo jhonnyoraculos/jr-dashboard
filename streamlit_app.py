@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-alinha-consolidado-transporte-ranking-v1"
+APP_VERSION = "deploy-rotas-sem-selecionar-todas-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -419,6 +419,24 @@ def inject_css() -> None:
           font-weight: 800;
           line-height: 1;
           margin: 0;
+        }}
+
+        .st-key-rank_route_popover [data-testid="stPopover"] > button {{
+          width: 100%;
+          min-height: 38px;
+          justify-content: space-between;
+          border: 1px solid rgba(255,255,255,.25);
+          border-radius: 8px;
+          background: #fff;
+          color: var(--jr-blue);
+          box-shadow: 0 3px 8px rgba(0,0,0,.12);
+          font-weight: 600;
+        }}
+
+        .st-key-rank_route_popover [data-testid="stPopover"] > button:hover {{
+          border-color: rgba(194,210,243,.95);
+          background: #fff;
+          color: var(--jr-blue);
         }}
 
         .st-key-comb_filterbar div[data-baseweb="select"] > div,
@@ -4334,35 +4352,39 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
             "frota",
             route_seed_params,
         )
-        route_options = ["Todos", *unique_filter_options(route_seed.get("rotas", []) or [])]
-        route_key = "rank_rota"
-        route_previous_key = f"{route_key}__previous"
+        route_options = unique_filter_options(route_seed.get("rotas", []) or [])
+        route_key = "rank_rota_selecao"
         route_state_exists = route_key in st.session_state
-        current_routes = st.session_state.get(route_key, ["Todos"])
-        current_routes = [item for item in current_routes if item in route_options] or ["Todos"]
+        current_routes = st.session_state.get(route_key, [])
+        if not isinstance(current_routes, list):
+            current_routes = [current_routes] if current_routes else []
+        current_routes = [item for item in current_routes if item in route_options]
         if route_state_exists and st.session_state.get(route_key) != current_routes:
             st.session_state[route_key] = current_routes
-            st.session_state[route_previous_key] = current_routes
-        if route_previous_key not in st.session_state:
-            st.session_state[route_previous_key] = current_routes
+        route_button_label = (
+            "Rota (Todos)"
+            if not current_routes
+            else str(current_routes[0])
+            if len(current_routes) == 1
+            else f"{len(current_routes)} rotas selecionadas"
+        )
         with cols[3]:
-            route_kwargs = {
-                "key": route_key,
-                "on_change": sync_multiselect_selection,
-                "args": (route_key,),
-                "format_func": select_all_label("Rota"),
-                "label_visibility": "collapsed",
-                "placeholder": "Selecione 2 rotas para comparar",
-                "help": "Selecione duas ou mais rotas para abrir o comparativo entre elas.",
-            }
-            if not route_state_exists:
-                route_kwargs["default"] = current_routes
-            routes_selected = st.multiselect("Rota", route_options, **route_kwargs)
-            routes_selected = normalize_multiselect(
-                routes_selected,
-                st.session_state.get(route_previous_key, ["Todos"]),
-            )
-        route_param = query_multiselect(routes_selected)
+            with st.popover(
+                route_button_label,
+                key="rank_route_popover",
+                help="Escolha uma ou mais rotas. Sem seleção, são usados os totais gerais do período.",
+                use_container_width=True,
+            ):
+                route_kwargs = {
+                    "key": route_key,
+                    "selection_mode": "multi",
+                    "label_visibility": "collapsed",
+                    "width": "stretch",
+                }
+                if not route_state_exists:
+                    route_kwargs["default"] = current_routes
+                routes_selected = st.pills("Rotas", route_options, **route_kwargs) or []
+        route_param = [str(item) for item in routes_selected] if routes_selected else ["Todos"]
 
         plate_seed = (
             route_seed
