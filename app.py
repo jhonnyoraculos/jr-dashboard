@@ -3559,6 +3559,11 @@ def data_frota(params: dict | None = None) -> dict:
     total_litros = sum(row["litros_total"] for row in ranking)
     total_gasto_placas = sum(row["total"] for row in ranking)
     total_salario_transporte = sum(row["salario_transporte"] for row in ranking) + salario_nao_rateado
+    total_salario_transporte_dias = (
+        int(pd.to_datetime(df_salario_costs["Data"], errors="coerce").dt.normalize().nunique())
+        if not df_salario_costs.empty and "Data" in df_salario_costs.columns
+        else 0
+    )
     total_gasto = total_gasto_placas + total_hoteis + salario_nao_rateado
     total_placas = len(ranking)
     total_dias_na_rota = sum(row["dias_na_rota"] for row in ranking)
@@ -3608,6 +3613,7 @@ def data_frota(params: dict | None = None) -> dict:
             "pedagio": round(sum(row["pedagio"] for row in ranking), 2),
             "gasto_diarias": round(sum(row["gasto_diarias"] for row in ranking), 2),
             "salario_transporte": round(total_salario_transporte, 2),
+            "salario_transporte_dias": total_salario_transporte_dias,
             "dias_trabalhados": sum(row["dias_trabalhados"] for row in ranking),
             "hoteis": round(total_hoteis, 2),
             "hoteis_diaria": round(hoteis_diaria, 2),
