@@ -3644,6 +3644,50 @@ def _overview_km_totals(*, ano: int | None = None, mes: int | None = None, meses
     }
 
 
+def _overview_transport_labor_totals(
+    *,
+    ano: int | None = None,
+    mes: int | None = None,
+    meses: list[int] | None = None,
+) -> dict[str, object]:
+    try:
+        salarios = load_salarios_transporte()
+    except Exception:
+        salarios = _empty(_SALARIOS_TRANSPORTE_COLUMNS)
+
+    periodos = (
+        {
+            str(periodo)
+            for periodo in pd.to_datetime(salarios.get("Mes"), errors="coerce").dt.to_period("M").dropna().unique()
+        }
+        if "Mes" in salarios.columns
+        else set()
+    )
+    salarios = _filter_by_period(salarios, ano=ano, mes=mes, meses=meses or [])
+    salario_total = (
+        float(pd.to_numeric(salarios.get("Valor"), errors="coerce").fillna(0.0).clip(lower=0).sum())
+        if "Valor" in salarios.columns
+        else 0.0
+    )
+
+    try:
+        peso = load_peso()
+        peso = _filter_by_period(peso, ano=ano, mes=mes, meses=meses or [])
+        diarias = _ranking_freighter_daily_costs(peso)
+    except Exception:
+        diarias = pd.DataFrame(columns=["Data", "Mes", "PLACA", "Diaria", "Custo"])
+    custo_freteiros = (
+        float(pd.to_numeric(diarias.get("Custo"), errors="coerce").fillna(0.0).clip(lower=0).sum())
+        if "Custo" in diarias.columns
+        else 0.0
+    )
+    return {
+        "salario_transporte": salario_total,
+        "custo_freteiros": custo_freteiros,
+        "periodos": sorted(periodos),
+    }
+
+
 def compute_overview_totals(*, ano: int | None = None, mes: int | None = None, meses_lista: list[int] | None = None) -> dict:
     ano = _parse_int(ano)
     mes = _parse_int(mes, min_value=1, max_value=12)
@@ -3659,7 +3703,16 @@ def compute_overview_totals(*, ano: int | None = None, mes: int | None = None, m
         "peso": (load_peso, agg_peso, "peso_total", "Peso", False),
     }
 
-    overview_cache_datasets = ("combustivel", "combustivel_km", "manutencao", "hoteis", "pedagio", "peso")
+    overview_cache_datasets = (
+        "combustivel",
+        "combustivel_km",
+        "manutencao",
+        "hoteis",
+        "pedagio",
+        "peso",
+        "placas",
+        "salarios_transporte",
+    )
     chave_cache = tuple(_CACHE_MAP[nome]["mtime"] for nome in overview_cache_datasets)
     use_cache = ano is None and mes is None and not meses_lista
     if use_cache and _OVERVIEW_CACHE["mtimes"] == chave_cache and _OVERVIEW_CACHE["dados"] is not None:
@@ -3712,8 +3765,26 @@ def compute_overview_totals(*, ano: int | None = None, mes: int | None = None, m
     detalhes["km_total"] = km_totais["total"]
     detalhes["km_transporte"] = km_totais["transporte"]
     detalhes["km_vex"] = km_totais["vex"]
+    labor_totals = _overview_transport_labor_totals(
+        ano=ano,
+        mes=mes,
+        meses=meses_lista,
+    )
+    periodos_unicos.update(labor_totals.get("periodos") or [])
+    periodos_ordenados = sorted(periodos_unicos)
+    anos_disponiveis = sorted({int(p.split("-")[0]) for p in periodos_ordenados if "-" in p})
+    if anos_extra:
+        anos_disponiveis = sorted(set(anos_disponiveis) | anos_extra)
+    periodos_base = periodos_ordenados
+    if ano is not None:
+        periodos_base = [periodo for periodo in periodos_ordenados if periodo.startswith(f"{ano}-")]
+    meses_disponiveis = sorted({int(p.split("-")[1]) for p in periodos_base if "-" in p})
+    salario_transporte = float(labor_totals.get("salario_transporte") or 0.0)
+    custo_freteiros = float(labor_totals.get("custo_freteiros") or 0.0)
     detalhes["segmentos"] = segmentos_dict
-    detalhes["total_transporte"] = segmentos_dict.get("Transporte", 0.0)
+    detalhes["salario_transporte"] = salario_transporte
+    detalhes["custo_freteiros"] = custo_freteiros
+    detalhes["total_transporte"] = segmentos_dict.get("Transporte", 0.0) + salario_transporte + custo_freteiros
     detalhes["total_vex"] = segmentos_dict.get("Vex", 0.0)
     detalhes["periodos_disponiveis"] = periodos_ordenados
     detalhes["anos_disponiveis"] = anos_disponiveis
