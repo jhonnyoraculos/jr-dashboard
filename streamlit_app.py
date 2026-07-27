@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-consolidado-igual-ranking-v1"
+APP_VERSION = "deploy-ordem-ranking-gastos-operacao-resultado-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4964,9 +4964,9 @@ def render_frota() -> None:
         )
 
     kpi_items = [
-        *(item + ("Resultado e produção",) for item in summary_kpis),
-        *(item + ("Operação",) for item in operation_kpis),
         *(item + ("Custos do período",) for item in cost_kpis),
+        *(item + ("Operação",) for item in operation_kpis),
+        *(item + ("Resultado e produção",) for item in summary_kpis),
     ]
     with st.container(key="frota_kpis"):
         render_kpis(kpi_items)
