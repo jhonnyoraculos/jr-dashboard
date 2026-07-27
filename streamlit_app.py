@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-percentual-custo-entregas-v1"
+APP_VERSION = "deploy-card-diarias-freteiro-v1"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -4053,7 +4053,7 @@ def frota_route_comparison_html(
     if show_daily:
         metrics.extend(
             [
-                ("Gasto com diárias", "gasto_diarias", fmt_brl_big, ""),
+                ("Gasto com diárias com freteiro", "gasto_diarias", fmt_brl_big, ""),
                 ("Dias trabalhados", "dias_trabalhados", fmt_num, ""),
             ]
         )
@@ -4442,7 +4442,7 @@ def ranking_summary_html(
         ]
     if show_daily and str(row.get("categoria") or "") == "Freteiro":
         items[3:3] = [
-            ("Gasto com diárias", fmt_brl_big(row.get("gasto_diarias"))),
+            ("Gasto com diárias com freteiro", fmt_brl_big(row.get("gasto_diarias"))),
             ("Dias trabalhados", fmt_num(row.get("dias_trabalhados"))),
         ]
     if not hide_fuel:
@@ -4478,7 +4478,7 @@ def ranking_detail_html(
         items[1:1] = [
             ("Valor da diária", fmt_brl_big(row.get("diaria"))),
             ("Dias trabalhados", fmt_num(row.get("dias_trabalhados"))),
-            ("Gasto com diárias", fmt_brl_big(row.get("gasto_diarias"))),
+            ("Gasto com diárias com freteiro", fmt_brl_big(row.get("gasto_diarias"))),
         ]
     if not hide_fuel:
         items[1:1] = [
@@ -4565,7 +4565,7 @@ def ranking_difference_html(
         ]
     if show_daily:
         metrics[1:1] = [
-            ("Gasto com diárias", "gasto_diarias", fmt_brl_big),
+            ("Gasto com diárias com freteiro", "gasto_diarias", fmt_brl_big),
             ("Dias trabalhados", "dias_trabalhados", fmt_num),
         ]
     if not hide_fuel:
@@ -4618,7 +4618,7 @@ def ranking_versus_html(
         metrics[1:1] = [
             ("Valor da diária", "diaria", fmt_brl_big),
             ("Dias trabalhados", "dias_trabalhados", fmt_num),
-            ("Gasto com diárias", "gasto_diarias", fmt_brl_big),
+            ("Gasto com diárias com freteiro", "gasto_diarias", fmt_brl_big),
         ]
     if not hide_fuel:
         metrics[1:1] = [
@@ -4870,11 +4870,12 @@ def render_frota() -> None:
             ),
         )
     if show_daily:
-        cost_kpis.extend(
-            [
-                ("Gasto com diárias", fmt_brl_big(totais.get("gasto_diarias")), "#7C3AED"),
-                ("Dias trabalhados", fmt_num(totais.get("dias_trabalhados")), "#7C3AED"),
-            ]
+        cost_kpis.append(
+            (
+                "Gasto com diárias com freteiro",
+                fmt_brl_big(totais.get("gasto_diarias")),
+                "#7C3AED",
+            )
         )
     if include_hoteis:
         hotel_days = fmt_num(totais.get("dias_hoteis"))
