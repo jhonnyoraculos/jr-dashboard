@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-performance-adicionar-dados-v1"
+APP_VERSION = "deploy-ranking-rotas-design-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -1710,6 +1710,79 @@ def inject_css() -> None:
           white-space: nowrap;
         }}
 
+        .dominance-panel--routes {{
+          margin-top: 18px;
+          padding: 20px;
+          overflow: visible;
+        }}
+
+        .dominance-route-heading {{
+          display: flex;
+          gap: 18px;
+          align-items: flex-start;
+          justify-content: space-between;
+          margin-bottom: 14px;
+        }}
+
+        .dominance-route-heading .dominance-title,
+        .dominance-route-heading .dominance-note {{
+          margin-bottom: 0;
+        }}
+
+        .dominance-route-heading .dominance-note {{
+          margin-top: 6px;
+        }}
+
+        .dominance-route-count {{
+          flex: 0 0 auto;
+          padding: 7px 11px;
+          border: 1px solid rgba(194,210,243,.72);
+          border-radius: 999px;
+          background: rgba(28,45,107,.06);
+          color: var(--jr-blue);
+          font-size: 11px;
+          font-weight: 900;
+          white-space: nowrap;
+        }}
+
+        .dominance-route-table {{
+          max-height: 520px;
+          gap: 7px;
+          overflow-y: auto;
+          scrollbar-gutter: stable;
+          padding: 0 7px 2px 0;
+        }}
+
+        .dominance-route-table::-webkit-scrollbar {{
+          width: 8px;
+        }}
+
+        .dominance-route-table::-webkit-scrollbar-track {{
+          border-radius: 999px;
+          background: rgba(28,45,107,.05);
+        }}
+
+        .dominance-route-table::-webkit-scrollbar-thumb {{
+          border-radius: 999px;
+          background: rgba(28,45,107,.26);
+        }}
+
+        .dominance-route-row {{
+          min-height: 46px;
+          grid-template-columns: minmax(240px, 1.6fr) minmax(90px, .65fr) repeat(3, minmax(90px, .55fr));
+        }}
+
+        .dominance-route-row--head {{
+          position: sticky;
+          top: 0;
+          z-index: 2;
+          min-height: 40px;
+          background: rgba(244,247,253,.96) !important;
+          box-shadow: 0 5px 12px rgba(28,45,107,.08) !important;
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+        }}
+
         .jr-topbar {{
           background:
             linear-gradient(135deg, rgba(28,45,107,.96), rgba(28,45,107,.84)),
@@ -2166,6 +2239,51 @@ def inject_css() -> None:
 
           .dominance-city-metric {{
             text-align: left;
+          }}
+
+          .dominance-panel--routes {{
+            padding: 14px;
+          }}
+
+          .dominance-route-heading {{
+            display: block;
+          }}
+
+          .dominance-route-count {{
+            display: inline-block;
+            margin-top: 10px;
+          }}
+
+          .dominance-route-table {{
+            max-height: 560px;
+            padding-right: 5px;
+          }}
+
+          .dominance-route-row {{
+            grid-template-columns: 1fr;
+            gap: 6px;
+            padding: 12px;
+          }}
+
+          .dominance-route-row--head {{
+            display: none;
+          }}
+
+          .dominance-route-row:not(.dominance-route-row--head) > span {{
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+            text-align: right;
+          }}
+
+          .dominance-route-row:not(.dominance-route-row--head) > span::before {{
+            content: attr(data-label);
+            color: var(--muted);
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: .05em;
+            text-transform: uppercase;
           }}
         }}
 
@@ -4748,14 +4866,14 @@ def dominance_route_ranking_html(rotas: list[dict]) -> str:
     route_rows = sorted(rotas or [], key=lambda item: float(item.get("peso") or 0), reverse=True)
     if not route_rows:
         return (
-            '<div class="dominance-panel">'
+            '<div class="dominance-panel dominance-panel--routes">'
             '<p class="dominance-title">Ranking de peso por rota e placa</p>'
             '<p class="dominance-note">Ainda nao ha rotas com peso para os filtros selecionados.</p>'
             '</div>'
         )
 
     rows_html = [
-        '<div class="dominance-city-row dominance-city-row--head">'
+        '<div class="dominance-city-row dominance-city-row--head dominance-route-row dominance-route-row--head">'
         '<span class="dominance-city-name">Rota</span>'
         '<span class="dominance-city-plate">Placa</span>'
         '<span class="dominance-city-metric">Peso</span>'
@@ -4765,19 +4883,24 @@ def dominance_route_ranking_html(rotas: list[dict]) -> str:
     ]
     for index, item in enumerate(route_rows, start=1):
         rows_html.append(
-            '<div class="dominance-city-row">'
-            f'<span class="dominance-city-name">{index:02d} - {h(item.get("rota") or "Sem rota")}</span>'
-            f'<span class="dominance-city-plate">{h(item.get("placa") or "Sem placa")}</span>'
-            f'<span class="dominance-city-metric">{h(fmt_peso(item.get("peso")))}</span>'
-            f'<span class="dominance-city-metric">{h(fmt_num(item.get("participacao"), 2))}%</span>'
-            f'<span class="dominance-city-metric">{h(fmt_peso(item.get("peso_rota")))}</span>'
+            '<div class="dominance-city-row dominance-route-row">'
+            f'<span class="dominance-city-name" data-label="Rota">{index:02d} - {h(item.get("rota") or "Sem rota")}</span>'
+            f'<span class="dominance-city-plate" data-label="Placa">{h(item.get("placa") or "Sem placa")}</span>'
+            f'<span class="dominance-city-metric" data-label="Peso">{h(fmt_peso(item.get("peso")))}</span>'
+            f'<span class="dominance-city-metric" data-label="Dominio">{h(fmt_num(item.get("participacao"), 2))}%</span>'
+            f'<span class="dominance-city-metric" data-label="Total rota">{h(fmt_peso(item.get("peso_rota")))}</span>'
             '</div>'
         )
     return (
-        '<div class="dominance-panel">'
+        '<div class="dominance-panel dominance-panel--routes">'
+        '<div class="dominance-route-heading">'
+        '<div>'
         '<p class="dominance-title">Ranking de peso por rota e placa</p>'
         '<p class="dominance-note">Todas as placas de cada rota aparecem em ordem de peso nos filtros selecionados.</p>'
-        f'<div class="dominance-cities">{"".join(rows_html)}</div>'
+        '</div>'
+        f'<span class="dominance-route-count">{len(route_rows)} resultado(s)</span>'
+        '</div>'
+        f'<div class="dominance-cities dominance-route-table">{"".join(rows_html)}</div>'
         '</div>'
     )
 
@@ -5091,9 +5214,7 @@ def render_frota() -> None:
     dominancia = data.get("dominancia_peso", {}) or {}
     rotas_dominadas = dominancia.get("rotas", []) or []
     if rotas_dominadas:
-        with st.container(border=True):
-            st.html('<div class="chart-title">Ranking de peso por rota e placa</div>')
-            st.markdown(dominance_route_ranking_html(rotas_dominadas), unsafe_allow_html=True)
+        st.html(dominance_route_ranking_html(rotas_dominadas))
 
     header_columns = ["#", "Placa", "Total", "Manutencao", "Pedagio/Extras", "Peso"]
     if show_daily:
