@@ -258,6 +258,16 @@ def _db_version(dataset: str):
     return metadata.get(f"{dataset}.version", metadata.get("import.version", "database"))
 
 
+def dashboard_data_version(datasets: list[str] | tuple[str, ...] | None = None) -> tuple[tuple[str, str], ...]:
+    metadata = _metadata_table_values()
+    selected = tuple(datasets or DB_TABLES.keys())
+    fallback = metadata.get("import.version", "database")
+    return tuple(
+        (dataset, str(metadata.get(f"{dataset}.version", fallback)))
+        for dataset in selected
+    )
+
+
 def get_backup_status() -> dict:
     raw_value = _db_metadata(BACKUP_METADATA_KEY)
     downloaded_at = None

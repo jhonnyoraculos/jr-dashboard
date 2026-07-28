@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-performance-carregamento-v1"
+APP_VERSION = "deploy-performance-adicionar-dados-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -6041,6 +6041,7 @@ def _render_delete_record_control(dataset: str, filtered_table: pd.DataFrame, co
             st.rerun()
 
 
+@st.fragment
 def _render_dataset_editor(
     dataset: str,
     loader,
@@ -6237,6 +6238,7 @@ PESO_ROUTE_SHEET_ALIASES = {
 }
 
 
+@st.cache_data(show_spinner=False, max_entries=64)
 def _sheet_xlsx_bytes(df: pd.DataFrame, sheet_name: str) -> bytes:
     from openpyxl.styles import Alignment, Font, PatternFill
 
@@ -6272,7 +6274,9 @@ def _sheet_xlsx_bytes(df: pd.DataFrame, sheet_name: str) -> bytes:
     return output.getvalue()
 
 
-def _backup_zip_bytes() -> bytes:
+@st.cache_data(show_spinner=False, max_entries=4)
+def _backup_zip_bytes(version_token: tuple[tuple[str, str], ...]) -> bytes:
+    del version_token
     generated_at = datetime.now(BR_TZ)
     summary_rows = []
     files: list[tuple[str, bytes]] = []
@@ -6342,6 +6346,7 @@ def _backup_downloaded_callback() -> None:
         st.session_state["backup_mark_error"] = clean_text(exc)
 
 
+@st.fragment
 def _render_backup_panel() -> None:
     try:
         status = backend.get_backup_status()
@@ -6361,9 +6366,12 @@ def _render_backup_panel() -> None:
             st.caption(f"Nao foi possivel consultar a data do ultimo backup: {status_error}")
 
         file_date = datetime.now(BR_TZ).strftime("%Y-%m-%d_%H-%M")
+        backup_version = backend.dashboard_data_version(
+            [dataset for dataset, _label, _file_prefix, _loader in BACKUP_TABLES]
+        )
         st.download_button(
             "Baixar backup completo (.zip)",
-            data=_backup_zip_bytes(),
+            data=lambda version=backup_version: _backup_zip_bytes(version),
             file_name=f"backup_jr_dashboard_{file_date}.zip",
             mime="application/zip",
             key="cadastro_backup_download",
@@ -6434,19 +6442,21 @@ def _render_sheet_downloads(
     with download_columns[0]:
         st.download_button(
             "Baixar planilha com dados",
-            data=_sheet_xlsx_bytes(data_frame, sheet_name),
+            data=lambda frame=data_frame, name=sheet_name: _sheet_xlsx_bytes(frame, name),
             file_name=data_file_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key=f"{key_prefix}_download_data",
+            on_click="ignore",
             width="stretch",
         )
     with download_columns[1]:
         st.download_button(
             "Baixar planilha de exemplo",
-            data=_sheet_xlsx_bytes(example_frame, sheet_name),
+            data=lambda frame=example_frame, name=sheet_name: _sheet_xlsx_bytes(frame, name),
             file_name=f"{file_prefix}_exemplo.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key=f"{key_prefix}_download_example",
+            on_click="ignore",
             width="stretch",
         )
     if selected_month:
@@ -6869,6 +6879,7 @@ def _undo_hoteis_last_import() -> None:
     st.rerun()
 
 
+@st.fragment
 def _render_hoteis_sheet_import() -> None:
     last_rows = st.session_state.get("cad_hotel_last_import_rows") or []
     if last_rows:
@@ -7008,6 +7019,7 @@ def _render_peso_import_summary(preview: pd.DataFrame) -> None:
     st.markdown(f"""<div class="table-counter-grid">{''.join(cards)}</div>""", unsafe_allow_html=True)
 
 
+@st.fragment
 def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
     last_rows = st.session_state.get("cad_peso_last_import_rows") or []
     if last_rows:
@@ -7084,6 +7096,7 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
             st.rerun()
 
 
+@st.fragment
 def _render_peso_route_import() -> None:
     last_success = st.session_state.pop("cad_peso_route_last_success", None)
     if last_success:
@@ -7265,6 +7278,7 @@ def _undo_combustivel_last_import() -> None:
     st.rerun()
 
 
+@st.fragment
 def _render_combustivel_sheet_import(plate_map: dict[str, str]) -> None:
     last_rows = st.session_state.get("cad_comb_last_import_rows") or []
     if last_rows:
@@ -7342,6 +7356,7 @@ def _render_combustivel_sheet_import(plate_map: dict[str, str]) -> None:
             st.rerun()
 
 
+@st.fragment
 def _render_peso_month_reset() -> None:
     with st.expander("Zerar peso por mes", expanded=False):
         st.warning("Essa acao apaga todos os lancamentos de peso do mes escolhido.")
@@ -7470,6 +7485,7 @@ def _save_records_with_replace_in_batches(dataset: str, rows: list[dict], replac
     return imported
 
 
+@st.fragment
 def _render_km_sheet_import() -> None:
     with st.expander("Adicionar KM mensal por planilha", expanded=False):
         _render_sheet_downloads(
@@ -7522,6 +7538,7 @@ def _render_km_sheet_import() -> None:
             st.rerun()
 
 
+@st.fragment
 def _render_pedagio_sheet_import(plate_map: dict[str, str]) -> None:
     last_rows = st.session_state.get("cad_ped_last_import_rows") or []
     if last_rows:
@@ -7596,6 +7613,7 @@ def _render_pedagio_sheet_import(plate_map: dict[str, str]) -> None:
             st.rerun()
 
 
+@st.fragment
 def _render_seguro_period_adjustment() -> None:
     with st.expander("Ajustar seguros para 10/2025 a 10/2026", expanded=False):
         try:
@@ -7757,6 +7775,7 @@ def _render_seguro_period_adjustment() -> None:
             st.rerun()
 
 
+@st.fragment
 def _render_pedagio_reset_all() -> None:
     with st.expander("Zerar todo Pedagio/Extras", expanded=False):
         st.warning("Essa acao apaga todos os lancamentos de pedagio, extras, taxi, IPVA e seguros. Use somente se for recadastrar tudo manualmente.")
