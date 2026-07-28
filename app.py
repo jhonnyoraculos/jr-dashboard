@@ -3892,6 +3892,73 @@ def data_overview(params: dict | None = None) -> dict:
     return compute_overview_totals(ano=ano, mes=mes, meses_lista=meses_lista)
 
 
+def data_overview_options(params: dict | None = None) -> dict:
+    params = params or {}
+    ano = _parse_int(_param(params, "ano"))
+    sources = (
+        (load_combustivel, True),
+        (load_manutencao, True),
+        (load_hoteis, True),
+        (load_pedagio, True),
+        (load_peso, True),
+        (load_salarios_transporte, False),
+    )
+    periodos: set[str] = set()
+    anos_extra: set[int] = set()
+
+    def _source_periods(source) -> tuple[set[str], set[int]]:
+        loader, include_sheet_years = source
+        try:
+            data = loader()
+        except Exception:
+            return set(), set()
+        source_periods: set[str] = set()
+        if "Mes" in data.columns:
+            parsed = pd.to_datetime(data["Mes"], errors="coerce").dt.to_period("M")
+            source_periods = {str(period) for period in parsed.dropna().unique()}
+        source_years: set[int] = set()
+        for value in data.attrs.get("anos_sheets", []) if include_sheet_years else []:
+            try:
+                source_years.add(int(value))
+            except (TypeError, ValueError):
+                continue
+        return source_periods, source_years
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(sources)) as pool:
+        for source_periods, source_years in pool.map(_source_periods, sources):
+            periodos.update(source_periods)
+            anos_extra.update(source_years)
+
+    periodos_ordenados = sorted(periodos)
+    anos_disponiveis = sorted(
+        {int(period.split("-")[0]) for period in periodos_ordenados if "-" in period}
+        | anos_extra
+    )
+    periodos_base = (
+        [period for period in periodos_ordenados if period.startswith(f"{ano}-")]
+        if ano is not None
+        else periodos_ordenados
+    )
+    meses_disponiveis = sorted(
+        {int(period.split("-")[1]) for period in periodos_base if "-" in period}
+    )
+    meses_por_ano = {
+        str(year): sorted(
+            {
+                int(period.split("-")[1])
+                for period in periodos_ordenados
+                if period.startswith(f"{year}-")
+            }
+        )
+        for year in anos_disponiveis
+    }
+    return {
+        "anos_disponiveis": anos_disponiveis,
+        "meses_disponiveis": meses_disponiveis,
+        "meses_por_ano": meses_por_ano,
+    }
+
+
 def main() -> None:
     from streamlit_app import main as streamlit_main
 
