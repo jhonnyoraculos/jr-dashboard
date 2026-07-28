@@ -3538,6 +3538,7 @@ def data_frota(params: dict | None = None) -> dict:
             "valor_peso": round(sum(row["valor_peso"] for row in ranking), 2),
             "km_total": round(total_km, 2),
             "litros_total": round(total_litros, 2),
+            "custo_por_km": round((total_gasto / total_km) if total_km else 0.0, 4),
             "km_por_litro": round((total_km / total_litros) if total_litros else 0.0, 3),
             "lancamentos": sum(row["lancamentos"] for row in ranking),
         },
