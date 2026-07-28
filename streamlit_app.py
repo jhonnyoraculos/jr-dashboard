@@ -29,7 +29,8 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-ranking-custo-total-por-km-v1"
+APP_VERSION = "deploy-performance-carregamento-v1"
+ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -88,6 +89,7 @@ ROUTES = {
     "vex": backend.data_vex,
     "frota": backend.data_frota,
     "overview": backend.data_overview,
+    "overview_options": backend.data_overview_options,
 }
 
 DASHBOARD_META = {
@@ -2220,7 +2222,7 @@ def _freeze_route_params(params: dict[str, object] | None = None) -> tuple[tuple
     return tuple(sorted(clean_items))
 
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=ROUTE_CACHE_TTL_SECONDS, show_spinner=False)
 def _route_json_cached(route: str, frozen_params: tuple[tuple[str, object], ...], version: str) -> dict:
     func = ROUTES[route]
     params = {
@@ -5153,12 +5155,18 @@ def render_home() -> None:
         unsafe_allow_html=True,
     )
 
-    overview_all = route_json("overview")
-    year_options = ["Todos", *(overview_all.get("anos_disponiveis", []) or [])]
-    default_year = last_closed_year_default(overview_all.get("anos_disponiveis", []) or [])
+    overview_options_all = route_json("overview_options")
+    year_options = ["Todos", *(overview_options_all.get("anos_disponiveis", []) or [])]
+    default_year = last_closed_year_default(overview_options_all.get("anos_disponiveis", []) or [])
     ano_state = st.session_state.get("home_ano", default_year)
     ano = ano_state if ano_state in year_options else default_year
-    months_seed = overview_all if ano == "Todos" else route_json("overview", {"ano": ano})
+    months_seed = overview_options_all
+    if ano != "Todos":
+        months_seed = {
+            "meses_disponiveis": (
+                overview_options_all.get("meses_por_ano", {}).get(str(ano), [])
+            )
+        }
     month_options = ["Todos", *(months_seed.get("meses_disponiveis", []) or [])]
     home_mes_exists = "home_mes" in st.session_state
     home_mes_previous_key = "home_mes__previous"
@@ -5175,17 +5183,13 @@ def render_home() -> None:
         st.session_state[home_mes_previous_key] = current_months
     meses = normalize_multiselect(current_months, st.session_state.get(home_mes_previous_key, ["Todos"]))
 
-    if meses == ["Todos"]:
-        overview = months_seed
-    else:
+    overview_params: dict[str, object] = {}
+    if ano != "Todos":
+        overview_params["ano"] = ano
+    if meses != ["Todos"]:
         overview_months = [f"{int(ano)}-{int(item):02d}" for item in meses] if ano != "Todos" else [int(item) for item in meses]
-        overview = route_json(
-            "overview",
-            {
-                "ano": None if ano == "Todos" else ano,
-                "mes": overview_months,
-            },
-        )
+        overview_params["mes"] = overview_months
+    overview = route_json("overview", overview_params)
     filter_text = ""
     if ano != "Todos":
         filter_text = f"Filtro aplicado: {ano}."
