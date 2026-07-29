@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-remove-media-diaria-comparativo-v1"
+APP_VERSION = "deploy-hover-nitido-comparativo-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -2012,6 +2012,40 @@ def inject_css() -> None:
             inset 0 0 0 1px rgba(255,255,255,.32),
             inset 0 -22px 48px rgba(255,255,255,.20);
           transform: translateX(6%) skewX(-10deg);
+        }}
+
+        .st-key-frota_route_compare:hover,
+        .st-key-frota_route_compare div[data-testid="stVerticalBlockBorderWrapper"]:hover {{
+          transform: none !important;
+          filter: none !important;
+          backdrop-filter: none !important;
+          -webkit-backdrop-filter: none !important;
+        }}
+
+        .route-compare-card:hover {{
+          transform: none !important;
+          filter: none !important;
+          background:
+            linear-gradient(145deg, rgba(255,255,255,.68), rgba(255,255,255,.34)),
+            var(--glass-bg) !important;
+          border-color: rgba(194,210,243,.82) !important;
+          box-shadow: 0 14px 30px rgba(16,24,40,.10) !important;
+          backdrop-filter: var(--glass-blur) !important;
+          -webkit-backdrop-filter: var(--glass-blur) !important;
+        }}
+
+        .route-compare-card:hover::after,
+        .st-key-frota_route_compare:hover::after,
+        .st-key-frota_route_compare div[data-testid="stVerticalBlockBorderWrapper"]:hover::after {{
+          animation: none !important;
+          opacity: .54 !important;
+          transform: translateX(-8%) skewX(-10deg) !important;
+          background-position: center, center, -84% 0, center !important;
+        }}
+
+        .route-compare-card:hover > * {{
+          filter: none !important;
+          transform: none !important;
         }}
 
         @media (prefers-reduced-motion: no-preference) {{
