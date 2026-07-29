@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-registros-recentes-primeiro-v1"
+APP_VERSION = "deploy-filtro-incluir-salario-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -375,7 +375,8 @@ def inject_css() -> None:
           display: none !important;
         }}
 
-        .st-key-rank_filterbar .st-key-rank_incluir_hoteis {{
+        .st-key-rank_filterbar .st-key-rank_incluir_hoteis,
+        .st-key-rank_filterbar .st-key-rank_incluir_salario {{
           height: 38px;
           display: flex;
           align-items: stretch;
@@ -384,12 +385,14 @@ def inject_css() -> None:
           transform: translateY(-8px);
         }}
 
-        .st-key-rank_filterbar [data-testid="column"]:has(.st-key-rank_incluir_hoteis) {{
+        .st-key-rank_filterbar [data-testid="column"]:has(.st-key-rank_incluir_hoteis),
+        .st-key-rank_filterbar [data-testid="column"]:has(.st-key-rank_incluir_salario) {{
           align-self: flex-start;
           padding-top: 0 !important;
         }}
 
-        .st-key-rank_filterbar .st-key-rank_incluir_hoteis [data-testid="stCheckbox"] {{
+        .st-key-rank_filterbar .st-key-rank_incluir_hoteis [data-testid="stCheckbox"],
+        .st-key-rank_filterbar .st-key-rank_incluir_salario [data-testid="stCheckbox"] {{
           width: 100%;
           height: 38px;
           display: flex;
@@ -397,7 +400,8 @@ def inject_css() -> None:
           margin: 0;
         }}
 
-        .st-key-rank_filterbar .st-key-rank_incluir_hoteis label {{
+        .st-key-rank_filterbar .st-key-rank_incluir_hoteis label,
+        .st-key-rank_filterbar .st-key-rank_incluir_salario label {{
           display: inline-flex !important;
           width: 100%;
           height: 38px;
@@ -415,7 +419,8 @@ def inject_css() -> None:
           box-sizing: border-box;
         }}
 
-        .st-key-rank_filterbar .st-key-rank_incluir_hoteis p {{
+        .st-key-rank_filterbar .st-key-rank_incluir_hoteis p,
+        .st-key-rank_filterbar .st-key-rank_incluir_salario p {{
           color: var(--jr-blue);
           font-size: 13px;
           font-weight: 800;
@@ -4514,7 +4519,7 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
     year_index = year_options.index(year_default) if year_default in year_options else 0
 
     with st.container(key="rank_filterbar"):
-        cols = st.columns([0.65, 1.0, 1.05, 1.1, 1.15, 0.78, 1.0, 0.88, 0.68])
+        cols = st.columns([0.65, 1.0, 1.05, 1.1, 1.15, 0.78, 0.82, 1.0, 0.88, 0.68])
         with cols[0]:
             ano = st.selectbox(
                 "Ano",
@@ -4584,11 +4589,13 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
             categoria_selected = normalize_multiselect(categoria_selected, st.session_state.get(categoria_previous_key, ["Todos"]))
         categoria_param = query_multiselect(categoria_selected)
         only_freteiro = categoria_param == ["Freteiro"]
+        include_salary = bool(st.session_state.get("rank_incluir_salario", True))
 
         route_seed_params = {
             "ano": None if ano == "Todos" else ano,
             "mes": query_mes(meses_selected),
             "categoria": categoria_param,
+            "incluir_salario": include_salary,
             "ordenar_por": "total",
         }
         route_seed = route_json(
@@ -4666,12 +4673,20 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
                 label_visibility="visible",
             )
 
+        with cols[6]:
+            include_salary = st.checkbox(
+                "Incluir salário",
+                value=include_salary,
+                key="rank_incluir_salario",
+                label_visibility="visible",
+            )
+
         order_options = [key for key in RANK_ORDER_OPTIONS if not (only_freteiro and key == "combustivel")]
         order_current = st.session_state.get("rank_ordenar_por", "total")
         if order_current not in order_options:
             order_current = "total"
             st.session_state["rank_ordenar_por"] = order_current
-        with cols[6]:
+        with cols[7]:
             ordenar_por = st.selectbox(
                 "Ordenar por",
                 order_options,
@@ -4681,13 +4696,13 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
                 label_visibility="collapsed",
             )
 
-        with cols[7]:
+        with cols[8]:
             if st.button("Limpar filtros", key="rank_clear", width="stretch"):
                 for state_key in list(st.session_state.keys()):
                     if state_key.startswith("rank_"):
                         del st.session_state[state_key]
                 st.rerun()
-        with cols[8]:
+        with cols[9]:
             st.markdown('<a class="filter-back" href="?page=home" target="_self">&larr; Voltar</a>', unsafe_allow_html=True)
 
     return {
@@ -4696,6 +4711,7 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
         "categoria": categoria_param,
         "rota": route_param,
         "incluir_hoteis": include_hoteis,
+        "incluir_salario": include_salary,
         "placa": ["Todos"] if placas_selected == ["Todos"] else [str(item) for item in placas_selected],
         "ordenar_por": ordenar_por,
     }
