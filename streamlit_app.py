@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-numero-entregas-ranking-v1"
+APP_VERSION = "deploy-remove-media-diaria-comparativo-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -4163,7 +4163,6 @@ def frota_route_comparison_html(
     hide_fuel: bool = False,
     show_daily: bool = False,
     show_hotels: bool = False,
-    selected_plate_count: int = 0,
     show_heading: bool = True,
 ) -> str:
     route_rows = []
@@ -4243,17 +4242,9 @@ def frota_route_comparison_html(
     ]
     if not hide_fuel:
         metrics.append(("Combustível", "combustivel", fmt_brl_big, ""))
-    maintenance_daily_label = (
-        "Média diária da placa"
-        if selected_plate_count == 1
-        else "Média diária das placas selecionadas"
-        if selected_plate_count > 1
-        else "Média diária das placas da rota"
-    )
     metrics.extend(
         [
             ("Manutenção estimada", "manutencao", fmt_brl_big, ""),
-            (maintenance_daily_label, "manutencao_diaria", fmt_brl_big, ""),
             ("Dias na rota", "dias_na_rota", fmt_num, ""),
             ("Pedágio/Extras", "pedagio", fmt_brl_big, ""),
         ]
@@ -4331,7 +4322,6 @@ def render_frota_route_compare(
     default_include_hotels: bool,
     hide_fuel: bool,
     show_daily: bool,
-    selected_plate_count: int,
 ) -> None:
     st.html(
         '<h2 class="ranking-versus-title">Comparativo entre rotas</h2>'
@@ -4360,7 +4350,6 @@ def render_frota_route_compare(
             route_compare,
             hide_fuel=hide_fuel,
             show_daily=show_daily,
-            selected_plate_count=selected_plate_count,
             show_heading=False,
         )
     )
@@ -5219,7 +5208,6 @@ def render_frota() -> None:
                 default_include_hotels=include_hoteis,
                 hide_fuel=freteiro_mode,
                 show_daily=show_daily,
-                selected_plate_count=len(selected_plates),
             )
 
     if not ranking:
