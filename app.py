@@ -3165,7 +3165,12 @@ def data_frota(params: dict | None = None) -> dict:
     ano = _parse_int(_param(params, "ano"))
     meses = _parse_mes_list(params.get("mes"))
     categorias_filtro = _ranking_parse_category_list(params.get("categoria"))
-    include_transport_salary = (
+    incluir_salario = (
+        _truthy_param(params.get("incluir_salario"))
+        if "incluir_salario" in params
+        else True
+    )
+    include_transport_salary = incluir_salario and (
         not categorias_filtro
         or any(_normalize_category_value(category) == "Transporte" for category in categorias_filtro)
     )
@@ -3543,6 +3548,7 @@ def data_frota(params: dict | None = None) -> dict:
             "hoteis_diaria": round(hoteis_diaria, 2),
             "dias_hoteis": round(total_dias_hoteis, 2),
             "inclui_hoteis": incluir_hoteis,
+            "inclui_salario": include_transport_salary,
             "peso_total": round(total_peso_geral, 3),
             "peso_total_filtrado": round(total_peso_filtrado, 3),
             "peso_sem_rota": round(peso_sem_rota, 3),
