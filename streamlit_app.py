@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-ranking-rotas-design-v1"
+APP_VERSION = "deploy-hoteis-por-rota-comparativo-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -1575,6 +1575,54 @@ def inject_css() -> None:
           color: var(--muted);
           font-size: 13px;
           font-weight: 700;
+        }}
+
+        .st-key-frota_route_hotel_controls {{
+          margin: 0 0 16px;
+          padding: 14px;
+          border: 1px solid rgba(194,210,243,.76);
+          border-radius: 12px;
+          background: rgba(255,255,255,.62);
+          box-shadow: 0 8px 20px rgba(16,24,40,.06);
+        }}
+
+        .st-key-frota_route_hotel_controls [data-testid="stMarkdownContainer"] p {{
+          margin: 0;
+          color: var(--jr-blue);
+          font-size: 12px;
+          font-weight: 900;
+        }}
+
+        .st-key-frota_route_hotel_controls [data-testid="stToggle"] {{
+          min-height: 42px;
+          padding: 7px 10px;
+          border: 1px solid rgba(194,210,243,.62);
+          border-radius: 9px;
+          background: rgba(255,255,255,.72);
+        }}
+
+        .st-key-frota_route_hotel_controls [data-testid="stToggle"] label {{
+          width: 100%;
+          color: var(--jr-blue);
+          font-weight: 800;
+        }}
+
+        .route-compare-card-heading {{
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+          justify-content: space-between;
+        }}
+
+        .route-compare-hotel-status {{
+          flex: 0 0 auto;
+          padding: 4px 8px;
+          border-radius: 999px;
+          background: rgba(15,118,110,.10);
+          color: #0f766e;
+          font-size: 10px;
+          font-weight: 900;
+          white-space: nowrap;
         }}
 
         .ranking-difference {{
@@ -4090,11 +4138,17 @@ def frota_plate_compare_bundle(params: dict[str, object], selected_plates: list[
     return bundle
 
 
-def frota_route_compare_bundle(params: dict[str, object], selected_routes: list[str]) -> list[tuple[str, dict, str]]:
+def frota_route_compare_bundle(
+    params: dict[str, object],
+    selected_routes: list[str],
+    hotel_by_route: dict[str, bool] | None = None,
+) -> list[tuple[str, dict, str]]:
     bundle = []
     for index, route_name in enumerate(selected_routes):
         route_params = dict(params)
         route_params["rota"] = [route_name]
+        if hotel_by_route is not None:
+            route_params["incluir_hoteis"] = bool(hotel_by_route.get(route_name, False))
         try:
             data = route_json("frota", route_params)
         except Exception:
@@ -4110,10 +4164,16 @@ def frota_route_comparison_html(
     show_daily: bool = False,
     show_hotels: bool = False,
     selected_plate_count: int = 0,
+    show_heading: bool = True,
 ) -> str:
     route_rows = []
     for route_name, data, color in bundle:
         totals = data.get("totais", {}) if isinstance(data, dict) else {}
+        hotel_enabled = (
+            bool(totals.get("inclui_hoteis"))
+            if "inclui_hoteis" in totals
+            else show_hotels
+        )
         route_row = {
             "rota": route_name,
             "color": color,
@@ -4131,6 +4191,7 @@ def frota_route_comparison_html(
             "hoteis": totals.get("hoteis"),
             "hoteis_diaria": totals.get("hoteis_diaria"),
             "dias_hoteis": totals.get("dias_hoteis"),
+            "hotel_enabled": hotel_enabled,
             "peso": totals.get("peso_total"),
         }
         delivery_value = _ranking_float(route_row, "ganho")
@@ -4211,36 +4272,95 @@ def frota_route_comparison_html(
                 "",
             )
         )
-    if show_hotels:
-        metrics.extend(
-            [
-                ("Hotéis estimados", "hoteis", fmt_brl_big, ""),
-                ("Média diária geral de hotéis", "hoteis_diaria", fmt_brl_big, ""),
-                ("Dias aplicados aos hotéis", "dias_hoteis", fmt_num, ""),
-            ]
-        )
     metrics.append(("Peso total", "peso", fmt_peso, ""))
 
     cards = []
     for row in route_rows:
+        row_metrics = list(metrics)
+        if row.get("hotel_enabled"):
+            row_metrics[-1:-1] = [
+                ("Hotéis estimados", "hoteis", fmt_brl_big, ""),
+                ("Média diária geral de hotéis", "hoteis_diaria", fmt_brl_big, ""),
+                ("Dias aplicados aos hotéis", "dias_hoteis", fmt_num, ""),
+            ]
         body = "".join(
             f'<div class="ranking-versus-metric{modifier}"><span>{h(label)}</span>'
             f'<span>{h(formatter(row.get(key)))}</span></div>'
-            for label, key, formatter, modifier in metrics
+            for label, key, formatter, modifier in row_metrics
+        )
+        hotel_status = (
+            '<span class="route-compare-hotel-status">Hotel incluído</span>'
+            if row.get("hotel_enabled")
+            else ""
         )
         cards.append(
             f'<article class="ranking-versus-card route-compare-card" style="--route-accent:{h(row["color"])}">'
-            f'<h3>{h(row.get("rota") or "Sem rota")}</h3>{body}</article>'
+            '<div class="route-compare-card-heading">'
+            f'<h3>{h(row.get("rota") or "Sem rota")}</h3>{hotel_status}'
+            f'</div>{body}</article>'
         )
 
-    return (
+    heading = (
         '<h2 class="ranking-versus-title">Comparativo entre rotas</h2>'
         '<p class="route-compare-note">Valores calculados separadamente para cada rota nos mesmos filtros de período, categoria e placa.</p>'
-        '<section class="ranking-difference">'
+        if show_heading
+        else ""
+    )
+    return (
+        heading
+        + '<section class="ranking-difference">'
         '<h3>Destaques das rotas selecionadas</h3>'
         f'<div class="ranking-difference-grid">{highlight_html}</div>'
         "</section>"
         f'<section class="ranking-versus-grid">{"".join(cards)}</section>'
+    )
+
+
+def _route_hotel_toggle_key(route_name: str) -> str:
+    route_hash = hashlib.sha1(str(route_name).encode("utf-8")).hexdigest()[:12]
+    return f"rank_compare_hotel_{route_hash}"
+
+
+@st.fragment
+def render_frota_route_compare(
+    params: dict[str, object],
+    selected_routes: list[str],
+    *,
+    default_include_hotels: bool,
+    hide_fuel: bool,
+    show_daily: bool,
+    selected_plate_count: int,
+) -> None:
+    st.html(
+        '<h2 class="ranking-versus-title">Comparativo entre rotas</h2>'
+        '<p class="route-compare-note">Ative ou desative os hotéis separadamente para cada rota.</p>'
+    )
+    hotel_by_route: dict[str, bool] = {}
+    with st.container(key="frota_route_hotel_controls"):
+        st.markdown("HOTÉIS INCLUÍDOS NO CUSTO DE CADA ROTA")
+        columns = st.columns(min(len(selected_routes), 3))
+        for index, route_name in enumerate(selected_routes):
+            toggle_key = _route_hotel_toggle_key(route_name)
+            with columns[index % len(columns)]:
+                hotel_by_route[route_name] = st.toggle(
+                    f"Incluir hotel — {route_name}",
+                    value=default_include_hotels,
+                    key=toggle_key,
+                )
+
+    route_compare = frota_route_compare_bundle(
+        params,
+        selected_routes,
+        hotel_by_route,
+    )
+    st.html(
+        frota_route_comparison_html(
+            route_compare,
+            hide_fuel=hide_fuel,
+            show_daily=show_daily,
+            selected_plate_count=selected_plate_count,
+            show_heading=False,
+        )
     )
 
 
@@ -5089,16 +5209,14 @@ def render_frota() -> None:
         render_kpis(kpi_items)
 
     if len(selected_routes) >= 2:
-        route_compare = frota_route_compare_bundle(params, selected_routes)
         with st.container(key="frota_route_compare"):
-            st.html(
-                frota_route_comparison_html(
-                    route_compare,
-                    hide_fuel=freteiro_mode,
-                    show_daily=show_daily,
-                    show_hotels=include_hoteis,
-                    selected_plate_count=len(selected_plates),
-                )
+            render_frota_route_compare(
+                params,
+                selected_routes,
+                default_include_hotels=include_hoteis,
+                hide_fuel=freteiro_mode,
+                show_daily=show_daily,
+                selected_plate_count=len(selected_plates),
             )
 
     if not ranking:
