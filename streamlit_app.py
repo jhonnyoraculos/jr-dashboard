@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-hover-nitido-todos-cards-v1"
+APP_VERSION = "deploy-registros-recentes-primeiro-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -6086,6 +6086,44 @@ def _filter_date_options(series: pd.Series) -> list[str]:
     return [label for _, label in rows]
 
 
+def _sort_table_recent_first(table: pd.DataFrame) -> pd.DataFrame:
+    if table is None or table.empty:
+        return table
+
+    sorted_table = table.copy()
+    order_column = None
+    if "Data" in sorted_table.columns:
+        order_column = "__jr_recent_date"
+        sorted_table[order_column] = _parse_filter_dates(sorted_table["Data"])
+    elif "Mes" in sorted_table.columns:
+        order_column = "__jr_recent_month"
+        sorted_table[order_column] = pd.to_datetime(
+            sorted_table["Mes"].astype("string").str.strip(),
+            errors="coerce",
+        )
+
+    sort_columns = []
+    ascending = []
+    if order_column:
+        sort_columns.append(order_column)
+        ascending.append(False)
+    if ROW_ID_COLUMN in sorted_table.columns:
+        sort_columns.append(ROW_ID_COLUMN)
+        ascending.append(False)
+    if not sort_columns:
+        return sorted_table
+
+    sorted_table = sorted_table.sort_values(
+        sort_columns,
+        ascending=ascending,
+        na_position="last",
+        kind="mergesort",
+    )
+    if order_column:
+        sorted_table = sorted_table.drop(columns=[order_column])
+    return sorted_table
+
+
 def _ordered_table_filter_columns(table: pd.DataFrame, filter_columns: list[str]) -> list[str]:
     active = [column for column in list(filter_columns or []) if column != "Data"]
     if "Data" not in table.columns:
@@ -6314,6 +6352,7 @@ def _render_dataset_editor(
 
     st.markdown("#### Tabela cadastrada")
     filtered_table = _apply_table_filters(table, columns, key_prefix, filter_columns)
+    filtered_table = _sort_table_recent_first(filtered_table)
     _render_table_plate_counter(filtered_table, key_prefix)
     visible_row_ids = set(pd.to_numeric(filtered_table[ROW_ID_COLUMN], errors="coerce").dropna().astype(int).tolist())
     nonce = st.session_state.get(f"{key_prefix}_editor_nonce", 0)
