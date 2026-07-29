@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-hoteis-por-rota-comparativo-v1"
+APP_VERSION = "deploy-numero-entregas-ranking-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -4178,6 +4178,7 @@ def frota_route_comparison_html(
             "rota": route_name,
             "color": color,
             "placas": totals.get("placas"),
+            "entregas": totals.get("entregas"),
             "ganho": totals.get("valor_peso"),
             "total": totals.get("total"),
             "combustivel": totals.get("combustivel"),
@@ -4235,6 +4236,7 @@ def frota_route_comparison_html(
 
     metrics = [
         ("Placas", "placas", fmt_num, ""),
+        ("Número de entregas", "entregas", fmt_num, ""),
         ("Ganho das entregas", "ganho", fmt_brl_big, " route-compare-metric--gain"),
         ("Gasto total da rota", "total", fmt_brl_big, ""),
         ("Custo sobre o valor das entregas", "percentual_custo", fmt_percent, " route-compare-metric--ratio"),
@@ -5093,6 +5095,7 @@ def render_frota() -> None:
 
     summary_kpis = [
         ("Placas no ranking", fmt_num(totais.get("placas")), JR_BLUE),
+        ("Número de entregas", fmt_num(totais.get("entregas")), JR_BLUE),
         ("Ganho das entregas", fmt_brl_big(totais.get("valor_peso")), "#15803D"),
         (weight_label, fmt_peso(totais.get("peso_total")), JR_BLUE),
         ("Ordenado por", order_label, JR_BLUE),

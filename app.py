@@ -3497,6 +3497,7 @@ def data_frota(params: dict | None = None) -> dict:
         if "Peso" in df_peso_total.columns
         else 0.0
     )
+    total_entregas = int(len(df_peso_total))
     peso_sem_rota = (
         float(
             pd.to_numeric(
@@ -3545,6 +3546,7 @@ def data_frota(params: dict | None = None) -> dict:
             "peso_total": round(total_peso_geral, 3),
             "peso_total_filtrado": round(total_peso_filtrado, 3),
             "peso_sem_rota": round(peso_sem_rota, 3),
+            "entregas": total_entregas,
             "valor_peso": round(sum(row["valor_peso"] for row in ranking), 2),
             "km_total": round(total_km, 2),
             "litros_total": round(total_litros, 2),
