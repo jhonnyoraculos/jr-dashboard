@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-hover-nitido-comparativo-v1"
+APP_VERSION = "deploy-hover-nitido-todos-cards-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -1986,16 +1986,14 @@ def inject_css() -> None:
         .dominance-panel:hover,
         div[data-testid="stVerticalBlockBorderWrapper"]:hover {{
           background:
-            radial-gradient(circle at 18% 0%, rgba(255,255,255,.82), rgba(255,255,255,0) 32%),
-            radial-gradient(circle at 92% 8%, rgba(255,255,255,.56), rgba(255,255,255,0) 24%),
-            var(--glass-refraction),
-            rgba(255,255,255,.34) !important;
-          border-color: rgba(255,255,255,.94) !important;
-          box-shadow: var(--glass-hover-shadow) !important;
-          backdrop-filter: blur(44px) saturate(225%);
-          -webkit-backdrop-filter: blur(44px) saturate(225%);
-          filter: saturate(1.05);
-          transform: translateY(-3px) scale(1.006);
+            linear-gradient(145deg, rgba(255,255,255,.68), rgba(255,255,255,.34)),
+            var(--glass-bg) !important;
+          border-color: rgba(194,210,243,.82) !important;
+          box-shadow: 0 14px 30px rgba(16,24,40,.10) !important;
+          backdrop-filter: var(--glass-blur);
+          -webkit-backdrop-filter: var(--glass-blur);
+          filter: none;
+          transform: none;
         }}
 
         .home-card:hover::before,
@@ -2005,13 +2003,14 @@ def inject_css() -> None:
         .ranking-versus-card:hover::after,
         .dominance-panel:hover::after,
         div[data-testid="stVerticalBlockBorderWrapper"]:hover::after {{
-          opacity: .92;
-          background-position: center, center, 118% 0, center;
+          animation: none !important;
+          opacity: .54;
+          background-position: center, center, -84% 0, center;
           box-shadow:
-            inset 0 1px 0 rgba(255,255,255,1),
-            inset 0 0 0 1px rgba(255,255,255,.32),
-            inset 0 -22px 48px rgba(255,255,255,.20);
-          transform: translateX(6%) skewX(-10deg);
+            inset 0 1px 0 rgba(255,255,255,.96),
+            inset 0 0 0 1px rgba(255,255,255,.18),
+            inset 0 -18px 38px rgba(255,255,255,.12);
+          transform: translateX(-8%) skewX(-10deg);
         }}
 
         .st-key-frota_route_compare:hover,
@@ -2046,27 +2045,6 @@ def inject_css() -> None:
         .route-compare-card:hover > * {{
           filter: none !important;
           transform: none !important;
-        }}
-
-        @media (prefers-reduced-motion: no-preference) {{
-          .home-card:hover::before,
-          .home-total-card:hover::after,
-          .kpi:hover::after,
-          .ranking-detail-card:hover::after,
-          .ranking-versus-card:hover::after,
-          .dominance-panel:hover::after,
-          div[data-testid="stVerticalBlockBorderWrapper"]:hover::after {{
-            animation: liquidSpecularSweep 1.8s ease-in-out infinite alternate;
-          }}
-
-          @keyframes liquidSpecularSweep {{
-            from {{
-              filter: brightness(1) saturate(1);
-            }}
-            to {{
-              filter: brightness(1.08) saturate(1.12);
-            }}
-          }}
         }}
 
         .home-card > *,
