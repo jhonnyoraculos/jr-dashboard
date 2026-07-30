@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-filtro-incluir-salario-v1"
+APP_VERSION = "deploy-remove-linha-topbar-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -1840,7 +1840,7 @@ def inject_css() -> None:
           background:
             linear-gradient(135deg, rgba(28,45,107,.96), rgba(28,45,107,.84)),
             rgba(28,45,107,.88);
-          border-bottom: 1px solid rgba(255,255,255,.16);
+          border-bottom: 0;
           box-shadow:
             0 18px 44px rgba(7,15,40,.26),
             inset 0 1px 0 rgba(255,255,255,.14);
