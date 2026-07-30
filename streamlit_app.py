@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-encaixe-topbar-filterbar-v1"
+APP_VERSION = "deploy-tema-claro-consistente-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -155,6 +155,7 @@ def inject_css() -> None:
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
 
         :root {{
+          color-scheme: light;
           --jr-blue: {JR_BLUE};
           --jr-red: {JR_RED};
           --muted: {MUTED};
@@ -178,8 +179,77 @@ def inject_css() -> None:
         html,
         body,
         .stApp {{
+          color-scheme: light !important;
           max-width: 100%;
           overflow-x: hidden;
+        }}
+
+        /*
+         * O dashboard foi desenhado com uma paleta clara. Estes estilos evitam
+         * que o tema escuro do navegador/Streamlit altere somente os controles
+         * nativos e deixe a interface com dois temas misturados.
+         */
+        .stApp div[data-baseweb="select"] > div,
+        .stApp div[data-baseweb="input"] > div,
+        .stApp div[data-baseweb="textarea"],
+        .stApp [data-testid="stTextInput"] input,
+        .stApp [data-testid="stNumberInput"] input,
+        .stApp [data-testid="stDateInput"] input,
+        .stApp [data-testid="stTimeInput"] input,
+        .stApp textarea {{
+          background-color: #fff !important;
+          color: var(--jr-blue) !important;
+          -webkit-text-fill-color: var(--jr-blue) !important;
+          border-color: rgba(194,210,243,.90) !important;
+        }}
+
+        .stApp div[data-baseweb="select"] *,
+        .stApp div[data-baseweb="input"] *,
+        .stApp div[data-baseweb="textarea"] *,
+        .stApp [data-testid="stTextInput"] input::placeholder,
+        .stApp [data-testid="stNumberInput"] input::placeholder,
+        .stApp [data-testid="stDateInput"] input::placeholder,
+        .stApp textarea::placeholder {{
+          color: var(--jr-blue) !important;
+          -webkit-text-fill-color: var(--jr-blue) !important;
+        }}
+
+        .stApp div[data-baseweb="select"] svg,
+        .stApp div[data-baseweb="input"] svg {{
+          color: var(--jr-blue) !important;
+          fill: var(--jr-blue) !important;
+        }}
+
+        div[data-baseweb="popover"],
+        div[data-baseweb="popover"] > div,
+        div[data-baseweb="menu"],
+        ul[role="listbox"],
+        li[role="option"] {{
+          color-scheme: light !important;
+          background-color: #fff !important;
+          color: var(--jr-blue) !important;
+        }}
+
+        li[role="option"]:hover,
+        li[role="option"][aria-selected="true"] {{
+          background-color: #f1f5ff !important;
+          color: var(--jr-blue) !important;
+        }}
+
+        .stApp [data-testid="stCheckbox"] label > span:first-child {{
+          color-scheme: light !important;
+          background-color: #fff;
+          border-radius: 4px;
+        }}
+
+        .stApp [data-testid="stFileUploaderDropzone"],
+        .stApp [data-testid="stFileUploaderFile"],
+        .stApp [data-testid="stExpander"],
+        .stApp details,
+        .stApp summary {{
+          color-scheme: light !important;
+          background-color: rgba(255,255,255,.92) !important;
+          color: var(--jr-blue) !important;
         }}
 
         [data-testid="stAppViewContainer"],
