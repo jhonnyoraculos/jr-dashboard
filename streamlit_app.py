@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-tema-claro-consistente-v1"
+APP_VERSION = "deploy-rolagem-otimizada-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -168,7 +168,7 @@ def inject_css() -> None:
           --glass-refraction: linear-gradient(135deg, rgba(255,255,255,.68), rgba(255,255,255,.20) 44%, rgba(217,228,255,.18) 72%, rgba(255,255,255,.48));
           --glass-shadow: 0 24px 60px rgba(16,24,40,.10), inset 0 1px 0 rgba(255,255,255,.98), inset 0 -20px 46px rgba(255,255,255,.18), inset 18px 0 32px rgba(255,255,255,.10);
           --glass-shadow-soft: 0 14px 34px rgba(16,24,40,.075), inset 0 1px 0 rgba(255,255,255,.94), inset 0 -16px 34px rgba(255,255,255,.14);
-          --glass-blur: blur(38px) saturate(205%);
+          --glass-blur: none;
           --glass-hover-shadow: 0 32px 82px rgba(16,24,40,.17), 0 12px 30px rgba(28,45,107,.11), inset 0 1px 0 rgba(255,255,255,1), inset 0 -24px 58px rgba(255,255,255,.24), inset 22px 0 42px rgba(255,255,255,.14);
         }}
 
@@ -180,6 +180,7 @@ def inject_css() -> None:
         body,
         .stApp {{
           color-scheme: light !important;
+          scroll-behavior: auto !important;
           max-width: 100%;
           overflow-x: hidden;
         }}
@@ -255,6 +256,7 @@ def inject_css() -> None:
         [data-testid="stAppViewContainer"],
         [data-testid="stMain"],
         [data-testid="stMainBlockContainer"] {{
+          scroll-behavior: auto !important;
           max-width: 100%;
           overflow-x: visible;
         }}
@@ -269,17 +271,17 @@ def inject_css() -> None:
         .stApp::before,
         .stApp::after {{
           content: "";
-          position: fixed;
-          inset: -18vh -18vw;
+          position: absolute;
+          inset: 0;
           pointer-events: none;
           z-index: 0;
           background-repeat: repeat;
-          will-change: transform;
+          will-change: auto;
         }}
 
         .stApp::before {{
           opacity: .72;
-          filter: drop-shadow(0 0 5px rgba(28,45,107,.28));
+          filter: none;
           background-image:
             radial-gradient(circle at 7% 14%, rgba(28,45,107,.32) 0 1px, transparent 2.1px),
             radial-gradient(circle at 18% 78%, rgba(28,45,107,.20) 0 1.4px, transparent 2.5px),
@@ -291,12 +293,12 @@ def inject_css() -> None:
             radial-gradient(circle at 88% 53%, rgba(28,45,107,.18) 0 1.6px, transparent 2.8px),
             radial-gradient(circle at 96% 23%, rgba(28,45,107,.30) 0 1.1px, transparent 2.3px);
           background-size: 620px 540px;
-          animation: jr-particles-drift 52s linear infinite;
+          animation: none;
         }}
 
         .stApp::after {{
           opacity: .64;
-          filter: drop-shadow(0 0 7px rgba(190,30,45,.30));
+          filter: none;
           background-image:
             radial-gradient(circle at 11% 37%, rgba(190,30,45,.24) 0 1.2px, transparent 2.4px),
             radial-gradient(circle at 21% 9%, rgba(190,30,45,.15) 0 1px, transparent 2.2px),
@@ -307,7 +309,7 @@ def inject_css() -> None:
             radial-gradient(circle at 81% 74%, rgba(255,255,255,.62) 0 1px, transparent 2.1px),
             radial-gradient(circle at 93% 47%, rgba(190,30,45,.17) 0 1.3px, transparent 2.5px);
           background-size: 760px 610px;
-          animation: jr-particles-float 71s linear infinite;
+          animation: none;
         }}
 
         @keyframes jr-particles-drift {{
@@ -1902,8 +1904,8 @@ def inject_css() -> None:
           min-height: 40px;
           background: rgba(244,247,253,.96) !important;
           box-shadow: 0 5px 12px rgba(28,45,107,.08) !important;
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
         }}
 
         .jr-topbar {{
@@ -1914,8 +1916,8 @@ def inject_css() -> None:
           box-shadow:
             0 18px 44px rgba(7,15,40,.26),
             inset 0 1px 0 rgba(255,255,255,.14);
-          backdrop-filter: blur(22px) saturate(155%);
-          -webkit-backdrop-filter: blur(22px) saturate(155%);
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
         }}
 
         .st-key-comb_filterbar,
@@ -1930,8 +1932,8 @@ def inject_css() -> None:
           border-bottom: 0;
           box-shadow:
             0 18px 44px rgba(7,15,40,.24);
-          backdrop-filter: blur(22px) saturate(155%);
-          -webkit-backdrop-filter: blur(22px) saturate(155%);
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
         }}
 
         .home-header,
@@ -2004,16 +2006,14 @@ def inject_css() -> None:
           position: relative;
           overflow: hidden;
           isolation: isolate;
-          transform: translateZ(0);
+          transform: none;
           background-clip: padding-box;
-          will-change: transform, box-shadow, filter;
+          will-change: auto;
           transition:
             transform .28s cubic-bezier(.2,.8,.2,1),
             box-shadow .28s cubic-bezier(.2,.8,.2,1),
             border-color .28s ease,
-            background .28s ease,
-            filter .28s ease,
-            backdrop-filter .28s ease;
+            background .28s ease;
         }}
 
         .home-card::before,
