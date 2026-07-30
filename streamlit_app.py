@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-remove-linha-filterbar-v1"
+APP_VERSION = "deploy-encaixe-topbar-filterbar-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -285,7 +285,7 @@ def inject_css() -> None:
           gap: 16px;
           flex-wrap: wrap;
           padding: 18px 32px;
-          margin: 0 calc(50% - 50vw) 0;
+          margin: 0 calc(50% - 50vw) -2px;
           width: 100vw;
           max-width: 100vw;
           box-sizing: border-box;
@@ -341,10 +341,10 @@ def inject_css() -> None:
         .st-key-vex_filterbar,
         .st-key-rank_filterbar {{
           background: var(--jr-blue);
-          margin: 0 calc(50% - 50vw) 58px;
+          margin: -2px calc(50% - 50vw) 58px;
           width: 100vw;
           max-width: 100vw;
-          padding: 0 32px 18px;
+          padding: 2px 32px 18px;
           box-sizing: border-box;
           box-shadow:
             0 4px 12px rgba(0,0,0,.2);
@@ -1838,7 +1838,7 @@ def inject_css() -> None:
 
         .jr-topbar {{
           background:
-            linear-gradient(135deg, rgba(28,45,107,.96), rgba(28,45,107,.84)),
+            linear-gradient(135deg, rgba(28,45,107,.95), rgba(28,45,107,.82)),
             rgba(28,45,107,.88);
           border-bottom: 0;
           box-shadow:
