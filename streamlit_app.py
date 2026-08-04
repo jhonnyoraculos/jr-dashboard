@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-rolagem-otimizada-v1"
+APP_VERSION = "deploy-custo-sobre-ganho-geral-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -5179,24 +5179,20 @@ def render_frota() -> None:
     else:
         weight_label = "Peso total geral"
 
+    delivery_value = _ranking_float(totais, "valor_peso")
+    cost_percentage = (
+        _ranking_float(totais, "total") / delivery_value * 100
+        if delivery_value > 0
+        else None
+    )
     summary_kpis = [
         ("Placas no ranking", fmt_num(totais.get("placas")), JR_BLUE),
         ("Número de entregas", fmt_num(totais.get("entregas")), JR_BLUE),
+        ("Custo sobre o ganho das entregas", fmt_percent(cost_percentage), "#D97706"),
         ("Ganho das entregas", fmt_brl_big(totais.get("valor_peso")), "#15803D"),
         (weight_label, fmt_peso(totais.get("peso_total")), JR_BLUE),
         ("Ordenado por", order_label, JR_BLUE),
     ]
-    if selected_routes:
-        delivery_value = _ranking_float(totais, "valor_peso")
-        cost_percentage = (
-            _ranking_float(totais, "total") / delivery_value * 100
-            if delivery_value > 0
-            else None
-        )
-        summary_kpis.insert(
-            2,
-            ("Custo sobre o valor das entregas", fmt_percent(cost_percentage), "#D97706"),
-        )
     operation_kpis = []
     if not freteiro_mode:
         operation_kpis = [
