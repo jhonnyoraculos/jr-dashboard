@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-colunas-filtros-streamlit-160-v1"
+APP_VERSION = "deploy-remove-media-diaria-rota-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -5640,24 +5640,6 @@ def render_frota() -> None:
         (maintenance_total_label, fmt_brl_big(totais.get("manutencao")), JR_RED),
         ("Pedágio/Extras", fmt_brl_big(totais.get("pedagio")), "#D97706"),
     ]
-    if show_route_maintenance_daily:
-        maintenance_daily_label = (
-            "Média diária da placa"
-            if len(selected_plates) == 1
-            else "Média diária das placas selecionadas"
-            if selected_plates
-            else "Média diária das placas da rota"
-            if len(selected_routes) == 1
-            else "Média diária das placas nas rotas"
-        )
-        cost_kpis.insert(
-            3,
-            (
-                maintenance_daily_label,
-                fmt_brl_big(totais.get("manutencao_diaria")),
-                "#7C3AED",
-            ),
-        )
     if show_daily:
         cost_kpis.append(
             (
