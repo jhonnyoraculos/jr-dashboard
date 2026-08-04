@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-filtro-placas-organizado-v1"
+APP_VERSION = "deploy-calendario-mensal-ranking-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -504,6 +504,7 @@ def inject_css() -> None:
         }}
 
         .st-key-rank_route_popover [data-testid="stPopover"] > button,
+        .st-key-rank_month_popover [data-testid="stPopover"] > button,
         .st-key-rank_plate_popover [data-testid="stPopover"] > button {{
           width: 100%;
           min-height: 38px;
@@ -517,10 +518,24 @@ def inject_css() -> None:
         }}
 
         .st-key-rank_route_popover [data-testid="stPopover"] > button:hover,
+        .st-key-rank_month_popover [data-testid="stPopover"] > button:hover,
         .st-key-rank_plate_popover [data-testid="stPopover"] > button:hover {{
           border-color: rgba(194,210,243,.95);
           background: #fff;
           color: var(--jr-blue);
+        }}
+
+        div[data-testid="stPopoverBody"]:has(.st-key-rank_mes) {{
+          width: min(440px, calc(100vw - 24px));
+          min-width: min(440px, calc(100vw - 24px));
+          padding: 14px;
+        }}
+
+        .st-key-rank_mes button {{
+          min-width: 82px;
+          justify-content: center;
+          border-radius: 8px !important;
+          font-weight: 700;
         }}
 
         div[data-testid="stPopoverBody"]:has(.st-key-rank_placa) {{
@@ -4774,33 +4789,50 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
 
         month_seed = seed if ano == "Todos" else route_json("frota", {"ano": ano, "mes": ["Todos"]})
         meses = unique_filter_options(month_seed.get("meses", []) or [])
-        mes_options = ["Todos", *meses]
         mes_key = "rank_mes"
-        mes_previous_key = f"{mes_key}__previous"
         mes_state_exists = mes_key in st.session_state
         current_meses = (
-            st.session_state.get(mes_key, ["Todos"])
+            st.session_state.get(mes_key, [])
             if mes_state_exists
-            else default_closed_month_selection(mes_options, ano)
+            else default_closed_month_selection(["Todos", *meses], ano)
         )
-        current_meses = [item for item in current_meses if item in mes_options] or ["Todos"]
+        if not isinstance(current_meses, list):
+            current_meses = [current_meses] if current_meses else []
+        current_meses = [item for item in current_meses if item != "Todos" and item in meses]
         if mes_state_exists and st.session_state.get(mes_key) != current_meses:
             st.session_state[mes_key] = current_meses
-            st.session_state[mes_previous_key] = current_meses
-        if mes_previous_key not in st.session_state:
-            st.session_state[mes_previous_key] = current_meses
+        month_button_label = (
+            "Mês (Todos)"
+            if not current_meses
+            else month_filter_label(current_meses[0])
+            if len(current_meses) == 1
+            else f"{len(current_meses)} meses selecionados"
+        )
         with cols[1]:
-            mes_kwargs = {
-                "key": mes_key,
-                "on_change": sync_multiselect_selection,
-                "args": (mes_key,),
-                "format_func": month_filter_label,
-                "label_visibility": "collapsed",
-            }
-            if not mes_state_exists:
-                mes_kwargs["default"] = current_meses
-            meses_selected = st.multiselect("Mês", mes_options, **mes_kwargs)
-            meses_selected = normalize_multiselect(meses_selected, st.session_state.get(mes_previous_key, ["Todos"]))
+            with st.popover(
+                month_button_label,
+                key="rank_month_popover",
+                help="Selecione um ou mais meses. Sem seleção, todos os meses são considerados.",
+                use_container_width=True,
+            ):
+                st.caption("CALENDÁRIO DE MESES")
+                if st.button("Usar todos os meses", key="rank_month_all", width="stretch"):
+                    st.session_state[mes_key] = []
+                    st.rerun()
+                mes_kwargs = {
+                    "key": mes_key,
+                    "selection_mode": "multi",
+                    "format_func": month_filter_label,
+                    "label_visibility": "collapsed",
+                    "width": "stretch",
+                }
+                if not mes_state_exists:
+                    mes_kwargs["default"] = current_meses
+                meses_selected = st.pills("Meses", meses, **mes_kwargs) or []
+                if meses_selected:
+                    st.caption(f"{len(meses_selected)} mês(es) selecionado(s).")
+                else:
+                    st.caption("Todos os meses estão incluídos.")
 
         category_options = ["Todos", *unique_filter_options(seed.get("categorias", []) or [])]
         categoria_default = [item for item in ("Transporte", "Freteiro") if item in category_options] or ["Todos"]
