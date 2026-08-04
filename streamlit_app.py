@@ -29,8 +29,9 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-graficos-alinhados-compactos-v1"
+APP_VERSION = "deploy-site-otimizado-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
+DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -1515,6 +1516,60 @@ def inject_css() -> None:
           line-height: 1.35;
         }}
 
+        .ranking-native-table {{
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }}
+
+        .ranking-native-row {{
+          border: 1px solid rgba(194,210,243,.95);
+          border-radius: 12px;
+          background: rgba(255,255,255,.84) !important;
+          box-shadow: 0 8px 18px rgba(16,24,40,.07);
+          overflow: hidden;
+        }}
+
+        .ranking-native-row > summary {{
+          min-height: 58px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 0 18px;
+          border-bottom: 1px solid transparent;
+          color: var(--jr-blue);
+          cursor: pointer;
+          font-size: 15px;
+          line-height: 1.35;
+          font-weight: 900;
+          list-style: none;
+        }}
+
+        .ranking-native-row > summary::-webkit-details-marker {{
+          display: none;
+        }}
+
+        .ranking-native-row > summary::before {{
+          content: "›";
+          flex: 0 0 auto;
+          font-size: 22px;
+          line-height: 1;
+          transform: rotate(0deg);
+          transition: transform .16s ease;
+        }}
+
+        .ranking-native-row[open] > summary {{
+          border-bottom-color: rgba(194,210,243,.58);
+        }}
+
+        .ranking-native-row[open] > summary::before {{
+          transform: rotate(90deg);
+        }}
+
+        .ranking-native-content {{
+          padding: 14px 18px 18px;
+        }}
+
         .ranking-detail-grid {{
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -1949,6 +2004,7 @@ def inject_css() -> None:
         .table-counter-card,
         .ranking-header,
         .st-key-frota_ranking_table [data-testid="stExpander"],
+        .ranking-native-row,
         .ranking-detail-card,
         .ranking-summary-item,
         .ranking-versus-card,
@@ -2142,8 +2198,8 @@ def inject_css() -> None:
           box-shadow:
             inset 0 1px 0 rgba(255,255,255,.90),
             0 8px 20px rgba(16,24,40,.07) !important;
-          backdrop-filter: blur(18px) saturate(160%);
-          -webkit-backdrop-filter: blur(18px) saturate(160%);
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
         }}
 
         [class*="_export_"] button,
@@ -2156,8 +2212,8 @@ def inject_css() -> None:
           box-shadow:
             0 12px 28px rgba(16,24,40,.10),
             inset 0 1px 0 rgba(255,255,255,.90) !important;
-          backdrop-filter: blur(20px) saturate(170%);
-          -webkit-backdrop-filter: blur(20px) saturate(170%);
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
         }}
 
         [class*="_dashboard_controls"] [data-testid="stDownloadButton"] button,
@@ -2364,6 +2420,16 @@ def inject_css() -> None:
 
           .st-key-frota_ranking_table [data-testid="stExpander"] summary p {{
             font-size: 12px;
+          }}
+
+          .ranking-native-row > summary {{
+            min-height: 52px;
+            padding: 8px 12px;
+            font-size: 12px;
+          }}
+
+          .ranking-native-content {{
+            padding: 10px 12px 14px;
           }}
 
           .dominance-city-row {{
@@ -4923,6 +4989,36 @@ def ranking_row_label(
     return " | ".join(parts)
 
 
+def ranking_native_table_html(
+    rows: list[dict],
+    *,
+    hide_fuel: bool = False,
+    show_daily: bool = False,
+    show_route_maintenance_daily: bool = False,
+) -> str:
+    rendered_rows = []
+    for row in rows:
+        label = ranking_row_label(
+            row,
+            hide_fuel=hide_fuel,
+            show_daily=show_daily,
+            show_route_maintenance_daily=show_route_maintenance_daily,
+        ).replace(r"\$", "$")
+        detail = ranking_detail_html(
+            row,
+            hide_fuel=hide_fuel,
+            show_daily=show_daily,
+            show_route_maintenance_daily=show_route_maintenance_daily,
+        )
+        rendered_rows.append(
+            '<details class="ranking-native-row">'
+            f'<summary>{h(label)}</summary>'
+            f'<div class="ranking-native-content">{detail}</div>'
+            '</details>'
+        )
+    return f'<div class="ranking-native-table">{"".join(rendered_rows)}</div>'
+
+
 def _ranking_float(row: dict, key: str) -> float:
     try:
         return float(row.get(key) or 0)
@@ -5443,24 +5539,14 @@ def render_frota() -> None:
         unsafe_allow_html=True,
     )
     with st.container(key="frota_ranking_table"):
-        for row in ranking:
-            with st.expander(
-                ranking_row_label(
-                    row,
-                    hide_fuel=freteiro_mode,
-                    show_daily=show_daily,
-                    show_route_maintenance_daily=show_route_maintenance_daily,
-                ),
-                expanded=False,
-            ):
-                st.html(
-                    ranking_detail_html(
-                        row,
-                        hide_fuel=freteiro_mode,
-                        show_daily=show_daily,
-                        show_route_maintenance_daily=show_route_maintenance_daily,
-                    )
-                )
+        st.html(
+            ranking_native_table_html(
+                ranking,
+                hide_fuel=freteiro_mode,
+                show_daily=show_daily,
+                show_route_maintenance_daily=show_route_maintenance_daily,
+            )
+        )
     footer("Ranking calculado com dados de combustível, manutenção, diárias e pedágio/extras do Neon. © JR")
 
 
@@ -6446,13 +6532,35 @@ def _render_dataset_editor(
     filtered_table = _apply_table_filters(table, columns, key_prefix, filter_columns)
     filtered_table = _sort_table_recent_first(filtered_table)
     _render_table_plate_counter(filtered_table, key_prefix)
-    visible_row_ids = set(pd.to_numeric(filtered_table[ROW_ID_COLUMN], errors="coerce").dropna().astype(int).tolist())
+
+    total_rows = len(filtered_table)
+    page_count = max(1, (total_rows + DATA_EDITOR_PAGE_SIZE - 1) // DATA_EDITOR_PAGE_SIZE)
+    page_key = f"{key_prefix}_editor_page"
+    current_page = int(st.session_state.get(page_key, 1) or 1)
+    if current_page < 1 or current_page > page_count:
+        st.session_state[page_key] = 1
+    if page_count > 1:
+        page = st.selectbox(
+            "Página da tabela",
+            list(range(1, page_count + 1)),
+            key=page_key,
+            format_func=lambda value: f"Página {value} de {page_count}",
+        )
+    else:
+        page = 1
+    start_row = (int(page) - 1) * DATA_EDITOR_PAGE_SIZE
+    end_row = min(start_row + DATA_EDITOR_PAGE_SIZE, total_rows)
+    editor_table = filtered_table.iloc[start_row:end_row].copy()
+    if total_rows:
+        st.caption(f"Exibindo registros {start_row + 1} a {end_row} de {total_rows}. Os mais recentes aparecem primeiro.")
+
+    visible_row_ids = set(pd.to_numeric(editor_table[ROW_ID_COLUMN], errors="coerce").dropna().astype(int).tolist())
     nonce = st.session_state.get(f"{key_prefix}_editor_nonce", 0)
-    _render_delete_record_control(dataset, filtered_table, columns, key_prefix, nonce)
+    _render_delete_record_control(dataset, editor_table, columns, key_prefix, nonce)
     editor_config = {ROW_ID_COLUMN: st.column_config.NumberColumn("Linha")}
     editor_config.update(column_config)
     edited = st.data_editor(
-        filtered_table,
+        editor_table,
         width="stretch",
         height=420,
         hide_index=True,
