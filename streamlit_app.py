@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-site-otimizado-v1"
+APP_VERSION = "deploy-scroll-fluido-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -61,6 +61,8 @@ BACKUP_TABLES = [
 PLOTLY_CONFIG = {
     "responsive": True,
     "displaylogo": False,
+    "displayModeBar": False,
+    "scrollZoom": False,
     "toImageButtonOptions": {"format": "png", "scale": 2},
     "modeBarButtonsToRemove": ["lasso2d", "select2d"],
 }
@@ -2262,6 +2264,79 @@ def inject_css() -> None:
           box-shadow:
             0 14px 30px rgba(190,30,45,.22),
             inset 0 1px 0 rgba(255,255,255,.24);
+        }}
+
+        /* Modo de renderização leve: evita repinturas caras durante o scroll. */
+        .stApp::before,
+        .stApp::after,
+        .home-header::before,
+        .home-header::after,
+        .home-card::before,
+        .home-total-card::after,
+        .kpi::after,
+        .ranking-detail-card::after,
+        .ranking-versus-card::after,
+        .dominance-panel::after,
+        div[data-testid="stVerticalBlockBorderWrapper"]::after {{
+          content: none !important;
+          display: none !important;
+        }}
+
+        .jr-topbar,
+        .st-key-comb_filterbar,
+        .st-key-manu_filterbar,
+        .st-key-hotel_filterbar,
+        .st-key-ped_filterbar,
+        .st-key-vex_filterbar,
+        .st-key-rank_filterbar {{
+          box-shadow: 0 3px 10px rgba(7,15,40,.16) !important;
+        }}
+
+        .home-header,
+        .home-card,
+        .home-footer,
+        .home-total-card,
+        .st-key-cadastro_shell,
+        .st-key-home_total_section,
+        div[data-testid="stVerticalBlockBorderWrapper"],
+        [class*="_dashboard_controls"],
+        .kpi-section,
+        .kpi,
+        .table-counter-card,
+        .ranking-header,
+        .ranking-native-row,
+        .ranking-detail-card,
+        .ranking-summary-item,
+        .ranking-versus-card,
+        .ranking-difference,
+        .ranking-difference-item,
+        .ranking-empty,
+        .dominance-panel,
+        .dominance-city-row {{
+          box-shadow: 0 3px 10px rgba(16,24,40,.07) !important;
+          backdrop-filter: none !important;
+          -webkit-backdrop-filter: none !important;
+          transition: none !important;
+          will-change: auto !important;
+        }}
+
+        div[data-testid="stPlotlyChart"] {{
+          contain: layout paint style;
+        }}
+
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stPlotlyChart"]),
+        .ranking-native-row {{
+          content-visibility: auto;
+          contain-intrinsic-size: auto 420px;
+        }}
+
+        .ranking-native-row {{
+          contain-intrinsic-size: auto 58px;
+        }}
+
+        .ranking-native-row[open] {{
+          content-visibility: visible;
+          contain-intrinsic-size: auto;
         }}
 
         @media (max-width: 780px) {{
