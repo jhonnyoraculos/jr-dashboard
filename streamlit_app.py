@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-alerta-custo-ganho-filtro-v1"
+APP_VERSION = "deploy-filtro-placas-organizado-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -503,7 +503,8 @@ def inject_css() -> None:
           margin: 0;
         }}
 
-        .st-key-rank_route_popover [data-testid="stPopover"] > button {{
+        .st-key-rank_route_popover [data-testid="stPopover"] > button,
+        .st-key-rank_plate_popover [data-testid="stPopover"] > button {{
           width: 100%;
           min-height: 38px;
           justify-content: space-between;
@@ -515,10 +516,30 @@ def inject_css() -> None:
           font-weight: 600;
         }}
 
-        .st-key-rank_route_popover [data-testid="stPopover"] > button:hover {{
+        .st-key-rank_route_popover [data-testid="stPopover"] > button:hover,
+        .st-key-rank_plate_popover [data-testid="stPopover"] > button:hover {{
           border-color: rgba(194,210,243,.95);
           background: #fff;
           color: var(--jr-blue);
+        }}
+
+        div[data-testid="stPopoverBody"]:has(.st-key-rank_placa) {{
+          width: min(390px, calc(100vw - 24px));
+          min-width: min(390px, calc(100vw - 24px));
+          padding: 14px;
+        }}
+
+        .st-key-rank_placa div[data-baseweb="select"] > div {{
+          min-height: 44px;
+          border: 1px solid rgba(194,210,243,.95) !important;
+          border-radius: 9px;
+          background: #fff !important;
+          box-shadow: none !important;
+        }}
+
+        .st-key-rank_placa span[data-baseweb="tag"] {{
+          background: var(--jr-red) !important;
+          border-radius: 7px !important;
         }}
 
         .st-key-comb_filterbar div[data-baseweb="select"] > div,
@@ -4963,28 +4984,43 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
             if route_param == ["Todos"]
             else route_json("frota", {**route_seed_params, "rota": route_param})
         )
-        plate_options = ["Todos", *unique_filter_options(plate_seed.get("placas", []) or [])]
+        plate_options = unique_filter_options(plate_seed.get("placas", []) or [])
         plate_key = "rank_placa"
-        plate_previous_key = f"{plate_key}__previous"
         plate_state_exists = plate_key in st.session_state
-        current_plates = st.session_state.get(plate_key, ["Todos"])
-        current_plates = [item for item in current_plates if item in plate_options] or ["Todos"]
+        current_plates = st.session_state.get(plate_key, [])
+        if not isinstance(current_plates, list):
+            current_plates = [current_plates] if current_plates else []
+        current_plates = [item for item in current_plates if item != "Todos" and item in plate_options]
         if plate_state_exists and st.session_state.get(plate_key) != current_plates:
             st.session_state[plate_key] = current_plates
-            st.session_state[plate_previous_key] = current_plates
-        if plate_previous_key not in st.session_state:
-            st.session_state[plate_previous_key] = current_plates
+        plate_button_label = (
+            "Placa (Todas)"
+            if not current_plates
+            else str(current_plates[0])
+            if len(current_plates) == 1
+            else f"{len(current_plates)} placas selecionadas"
+        )
         with cols[4]:
-            plate_kwargs = {
-                "key": plate_key,
-                "on_change": sync_multiselect_selection,
-                "args": (plate_key,),
-                "label_visibility": "collapsed",
-            }
-            if not plate_state_exists:
-                plate_kwargs["default"] = current_plates
-            placas_selected = st.multiselect("Placa", plate_options, **plate_kwargs)
-            placas_selected = normalize_multiselect(placas_selected, st.session_state.get(plate_previous_key, ["Todos"]))
+            with st.popover(
+                plate_button_label,
+                key="rank_plate_popover",
+                help="Busque e selecione uma ou mais placas. Sem seleção, todas são consideradas.",
+                use_container_width=True,
+            ):
+                st.caption("BUSCAR E SELECIONAR PLACAS")
+                plate_kwargs = {
+                    "key": plate_key,
+                    "label_visibility": "collapsed",
+                    "placeholder": "Digite a placa para buscar",
+                    "width": "stretch",
+                }
+                if not plate_state_exists:
+                    plate_kwargs["default"] = current_plates
+                placas_selected = st.multiselect("Placas", plate_options, **plate_kwargs)
+                if placas_selected:
+                    st.caption(f"{len(placas_selected)} placa(s) selecionada(s).")
+                else:
+                    st.caption("Todas as placas estão incluídas.")
 
         with cols[5]:
             include_hoteis = st.checkbox(
@@ -5033,7 +5069,7 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
         "rota": route_param,
         "incluir_hoteis": include_hoteis,
         "incluir_salario": include_salary,
-        "placa": ["Todos"] if placas_selected == ["Todos"] else [str(item) for item in placas_selected],
+        "placa": ["Todos"] if not placas_selected else [str(item) for item in placas_selected],
         "ordenar_por": ordenar_por,
     }
 
