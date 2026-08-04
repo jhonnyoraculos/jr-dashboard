@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-graficos-alinhados-v1"
+APP_VERSION = "deploy-graficos-alinhados-compactos-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -3899,9 +3899,16 @@ def chart_grid(charts: list[tuple[str, go.Figure]], *, key_prefix: str = "chart"
 
         if index + 1 < len(charts) and not chart_prefers_full_width(charts[index + 1][1]):
             row_items = charts[index : index + 2]
-            row_height = max(int(item[1].layout.height or 360) for item in row_items)
-            for _row_title, row_fig in row_items:
-                row_fig.update_layout(height=row_height)
+            scroll_heights = [chart_scroll_height(item[1]) for item in row_items]
+            visible_scroll_heights = [height for height in scroll_heights if height]
+            row_height = (
+                max(visible_scroll_heights)
+                if visible_scroll_heights
+                else max(int(item[1].layout.height or 360) for item in row_items)
+            )
+            for (_row_title, row_fig), scroll_height in zip(row_items, scroll_heights):
+                if not scroll_height:
+                    row_fig.update_layout(height=row_height)
             cols = st.columns(2)
             for offset, (col, item) in enumerate(zip(cols, row_items)):
                 with col:
