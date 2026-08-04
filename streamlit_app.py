@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-alerta-custo-ganho-rota-v1"
+APP_VERSION = "deploy-alerta-custo-ganho-filtro-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -4593,48 +4593,6 @@ def render_frota_route_compare(
     )
 
 
-def render_route_cost_gain_alerts(analysis: dict | None) -> None:
-    if not isinstance(analysis, dict):
-        return
-    monthly_rows = [row for row in analysis.get("mensal", []) if isinstance(row, dict)]
-    critical = [row for row in monthly_rows if row.get("nivel") == "vermelho"]
-    warning = [row for row in monthly_rows if row.get("nivel") == "amarelo"]
-
-    def alert_body(title: str, rows: list[dict]) -> str:
-        grouped: dict[str, list[dict]] = {}
-        for row in rows:
-            grouped.setdefault(str(row.get("rota") or "Sem rota"), []).append(row)
-        route_lines = []
-        for route_name in sorted(grouped, key=str.casefold):
-            month_items = []
-            for row in sorted(grouped[route_name], key=lambda item: str(item.get("mes") or "")):
-                month = month_filter_label(row.get("mes"))
-                ratio = "sem ganho registrado" if row.get("sem_ganho") else fmt_percent(row.get("percentual"))
-                month_items.append(
-                    f"**{month}: {ratio}** "
-                    f"(custo {fmt_brl_big(row.get('custo'))} / ganho {fmt_brl_big(row.get('ganho'))})"
-                )
-            route_lines.append(f"- **{route_name}:** " + " · ".join(month_items))
-        return title + "\n\n" + "\n\n".join(route_lines)
-
-    if critical:
-        st.error(
-            alert_body(
-                "**Alerta vermelho — custo igual ou superior a 100% do ganho por rota e mês.**",
-                critical,
-            ),
-            icon="🚨",
-        )
-    if warning:
-        st.warning(
-            alert_body(
-                "**Alerta amarelo — custo entre 80% e 99,99% do ganho por rota e mês.**",
-                warning,
-            ),
-            icon="⚠️",
-        )
-
-
 def frota_plate_monthly_series(bundle: list[tuple[str, dict, str]], source_key: str, value_key: str) -> list[dict]:
     series = []
     for plate, data, color in bundle:
@@ -4878,6 +4836,32 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
             for row in route_cost_rows
             if isinstance(row, dict) and str(row.get("rota") or "").strip()
         }
+        route_monthly_rows = (
+            route_seed.get("custo_ganho_rotas", {}).get("mensal", [])
+            if isinstance(route_seed.get("custo_ganho_rotas"), dict)
+            else []
+        )
+        route_alert_rows = [
+            row
+            for row in route_monthly_rows
+            if isinstance(row, dict) and row.get("nivel") in {"amarelo", "vermelho"}
+        ]
+        route_worst_alert: dict[str, dict] = {}
+        for row in route_alert_rows:
+            route_name = str(row.get("rota") or "")
+            previous = route_worst_alert.get(route_name)
+            row_score = (
+                2 if row.get("nivel") == "vermelho" else 1,
+                bool(row.get("sem_ganho")),
+                float(row.get("percentual") or 0.0),
+            )
+            previous_score = (
+                2 if previous and previous.get("nivel") == "vermelho" else 1 if previous else 0,
+                bool(previous and previous.get("sem_ganho")),
+                float(previous.get("percentual") or 0.0) if previous else 0.0,
+            )
+            if previous is None or row_score > previous_score:
+                route_worst_alert[route_name] = row
         route_key = "rank_rota_selecao"
         route_state_exists = route_key in st.session_state
         current_routes = st.session_state.get(route_key, [])
@@ -4923,10 +4907,16 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
 
                 def route_filter_label(route: object) -> str:
                     row = route_cost_map.get(str(route), {})
+                    alert = route_worst_alert.get(str(route), {})
+                    alert_prefix = "🔴 " if alert.get("nivel") == "vermelho" else "🟡 " if alert else ""
                     if row.get("sem_ganho"):
-                        return f"{route} — sem ganho"
+                        return f"{alert_prefix}{route} — sem ganho"
                     percentage = row.get("percentual")
-                    return f"{route} — {fmt_percent(percentage)}" if percentage is not None else str(route)
+                    return (
+                        f"{alert_prefix}{route} — {fmt_percent(percentage)}"
+                        if percentage is not None
+                        else f"{alert_prefix}{route}"
+                    )
 
                 route_kwargs = {
                     "key": route_key,
@@ -4938,6 +4928,34 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
                 if not route_state_exists:
                     route_kwargs["default"] = current_routes
                 routes_selected = st.pills("Rotas", route_options, **route_kwargs) or []
+                if route_alert_rows:
+                    with st.expander("Alertas mensais de custo sobre ganho", expanded=False):
+                        critical_lines = []
+                        warning_lines = []
+                        for row in sorted(
+                            route_alert_rows,
+                            key=lambda item: (
+                                str(item.get("rota") or "").casefold(),
+                                str(item.get("mes") or ""),
+                            ),
+                        ):
+                            percentage = (
+                                "sem ganho registrado"
+                                if row.get("sem_ganho")
+                                else fmt_percent(row.get("percentual"))
+                            )
+                            line = (
+                                f"- **{row.get('rota') or 'Sem rota'} · {month_filter_label(row.get('mes'))}:** "
+                                f"{percentage}"
+                            )
+                            if row.get("nivel") == "vermelho":
+                                critical_lines.append(line)
+                            else:
+                                warning_lines.append(line)
+                        if critical_lines:
+                            st.error("\n\n".join(critical_lines), icon="🚨")
+                        if warning_lines:
+                            st.warning("\n\n".join(warning_lines), icon="⚠️")
         route_param = [str(item) for item in routes_selected] if routes_selected else ["Todos"]
 
         plate_seed = (
@@ -5435,9 +5453,6 @@ def render_frota() -> None:
         or any(float(row.get("diaria") or 0) > 0 for row in ranking)
     )
     show_route_maintenance_daily = bool(selected_routes)
-
-    with st.container(key="frota_cost_gain_alerts"):
-        render_route_cost_gain_alerts(data.get("custo_ganho_rotas"))
 
     if selected_routes:
         weight_label = "Peso total da rota" if len(selected_routes) == 1 else "Peso total das rotas"
