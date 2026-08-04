@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-busca-placas-layout-corrigido-v1"
+APP_VERSION = "deploy-colunas-filtros-streamlit-160-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -461,8 +461,8 @@ def inject_css() -> None:
           transform: translateY(-8px);
         }}
 
-        .st-key-rank_filterbar [data-testid="column"]:has(.st-key-rank_incluir_hoteis),
-        .st-key-rank_filterbar [data-testid="column"]:has(.st-key-rank_incluir_salario) {{
+        .st-key-rank_filterbar :is([data-testid="column"], [data-testid="stColumn"]):has(.st-key-rank_incluir_hoteis),
+        .st-key-rank_filterbar :is([data-testid="column"], [data-testid="stColumn"]):has(.st-key-rank_incluir_salario) {{
           align-self: flex-start;
           padding-top: 0 !important;
         }}
@@ -605,12 +605,12 @@ def inject_css() -> None:
           flex-wrap: wrap !important;
         }}
 
-        .st-key-comb_filterbar [data-testid="column"],
-        .st-key-manu_filterbar [data-testid="column"],
-        .st-key-hotel_filterbar [data-testid="column"],
-        .st-key-ped_filterbar [data-testid="column"],
-        .st-key-vex_filterbar [data-testid="column"],
-        .st-key-rank_filterbar [data-testid="column"] {{
+        .st-key-comb_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+        .st-key-manu_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+        .st-key-hotel_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+        .st-key-ped_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+        .st-key-vex_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+        .st-key-rank_filterbar :is([data-testid="column"], [data-testid="stColumn"]) {{
           flex: 1 1 150px !important;
           min-width: 145px !important;
           max-width: none !important;
@@ -621,7 +621,7 @@ def inject_css() -> None:
           padding: 6px 18px 12px;
         }}
 
-        .st-key-rank_filterbar [data-testid="column"] > div,
+        .st-key-rank_filterbar :is([data-testid="column"], [data-testid="stColumn"]) > div,
         .st-key-rank_filterbar .stButton,
         .st-key-rank_filterbar [data-testid="stPopover"] {{
           width: 100%;
@@ -635,7 +635,7 @@ def inject_css() -> None:
             align-items: start;
           }}
 
-          .st-key-rank_filterbar [data-testid="column"] {{
+          .st-key-rank_filterbar :is([data-testid="column"], [data-testid="stColumn"]) {{
             width: 100% !important;
             min-width: 0 !important;
             max-width: none !important;
@@ -651,7 +651,7 @@ def inject_css() -> None:
             align-items: start;
           }}
 
-          .st-key-rank_filterbar [data-testid="column"] {{
+          .st-key-rank_filterbar :is([data-testid="column"], [data-testid="stColumn"]) {{
             width: 100% !important;
             min-width: 0 !important;
             max-width: none !important;
@@ -1502,7 +1502,7 @@ def inject_css() -> None:
           align-items: stretch;
         }}
 
-        [class*="_dashboard_controls"] [data-testid="column"] {{
+        [class*="_dashboard_controls"] :is([data-testid="column"], [data-testid="stColumn"]) {{
           display: flex;
           flex-direction: column;
           justify-content: stretch;
@@ -2486,12 +2486,12 @@ def inject_css() -> None:
             scrollbar-width: thin;
           }}
 
-          .st-key-comb_filterbar [data-testid="column"],
-          .st-key-manu_filterbar [data-testid="column"],
-          .st-key-hotel_filterbar [data-testid="column"],
-          .st-key-ped_filterbar [data-testid="column"],
-          .st-key-vex_filterbar [data-testid="column"],
-          .st-key-rank_filterbar [data-testid="column"] {{
+          .st-key-comb_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+          .st-key-manu_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+          .st-key-hotel_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+          .st-key-ped_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+          .st-key-vex_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+          .st-key-rank_filterbar :is([data-testid="column"], [data-testid="stColumn"]) {{
             flex: 0 0 clamp(132px, 43vw, 190px) !important;
             min-width: clamp(132px, 43vw, 190px) !important;
             max-width: clamp(132px, 43vw, 190px) !important;
@@ -2582,7 +2582,7 @@ def inject_css() -> None:
             padding: 12px;
           }}
 
-          [class*="_dashboard_controls"] [data-testid="column"] {{
+          [class*="_dashboard_controls"] :is([data-testid="column"], [data-testid="stColumn"]) {{
             flex: 1 1 calc(50% - 8px) !important;
             min-width: min(180px, 100%) !important;
           }}
@@ -2666,12 +2666,12 @@ def inject_css() -> None:
         }}
 
         @media (max-width: 560px) {{
-          .st-key-comb_filterbar [data-testid="column"],
-          .st-key-manu_filterbar [data-testid="column"],
-          .st-key-hotel_filterbar [data-testid="column"],
-          .st-key-ped_filterbar [data-testid="column"],
-          .st-key-vex_filterbar [data-testid="column"],
-          .st-key-rank_filterbar [data-testid="column"] {{
+          .st-key-comb_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+          .st-key-manu_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+          .st-key-hotel_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+          .st-key-ped_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+          .st-key-vex_filterbar :is([data-testid="column"], [data-testid="stColumn"]),
+          .st-key-rank_filterbar :is([data-testid="column"], [data-testid="stColumn"]) {{
             flex-basis: 150px !important;
             min-width: 150px !important;
             max-width: 150px !important;
@@ -2690,7 +2690,7 @@ def inject_css() -> None:
             font-size: 12px;
           }}
 
-          [class*="_dashboard_controls"] [data-testid="column"] {{
+          [class*="_dashboard_controls"] :is([data-testid="column"], [data-testid="stColumn"]) {{
             flex: 1 1 100% !important;
             min-width: 100% !important;
           }}
