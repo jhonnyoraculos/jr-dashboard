@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-remove-cabecalho-ranking-v1"
+APP_VERSION = "deploy-alerta-custo-ganho-rota-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -4593,6 +4593,48 @@ def render_frota_route_compare(
     )
 
 
+def render_route_cost_gain_alerts(analysis: dict | None) -> None:
+    if not isinstance(analysis, dict):
+        return
+    monthly_rows = [row for row in analysis.get("mensal", []) if isinstance(row, dict)]
+    critical = [row for row in monthly_rows if row.get("nivel") == "vermelho"]
+    warning = [row for row in monthly_rows if row.get("nivel") == "amarelo"]
+
+    def alert_body(title: str, rows: list[dict]) -> str:
+        grouped: dict[str, list[dict]] = {}
+        for row in rows:
+            grouped.setdefault(str(row.get("rota") or "Sem rota"), []).append(row)
+        route_lines = []
+        for route_name in sorted(grouped, key=str.casefold):
+            month_items = []
+            for row in sorted(grouped[route_name], key=lambda item: str(item.get("mes") or "")):
+                month = month_filter_label(row.get("mes"))
+                ratio = "sem ganho registrado" if row.get("sem_ganho") else fmt_percent(row.get("percentual"))
+                month_items.append(
+                    f"**{month}: {ratio}** "
+                    f"(custo {fmt_brl_big(row.get('custo'))} / ganho {fmt_brl_big(row.get('ganho'))})"
+                )
+            route_lines.append(f"- **{route_name}:** " + " · ".join(month_items))
+        return title + "\n\n" + "\n\n".join(route_lines)
+
+    if critical:
+        st.error(
+            alert_body(
+                "**Alerta vermelho — custo igual ou superior a 100% do ganho por rota e mês.**",
+                critical,
+            ),
+            icon="🚨",
+        )
+    if warning:
+        st.warning(
+            alert_body(
+                "**Alerta amarelo — custo entre 80% e 99,99% do ganho por rota e mês.**",
+                warning,
+            ),
+            icon="⚠️",
+        )
+
+
 def frota_plate_monthly_series(bundle: list[tuple[str, dict, str]], source_key: str, value_key: str) -> list[dict]:
     series = []
     for plate, data, color in bundle:
@@ -4811,25 +4853,37 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
         categoria_param = query_multiselect(categoria_selected)
         only_freteiro = categoria_param == ["Freteiro"]
         include_salary = bool(st.session_state.get("rank_incluir_salario", True))
+        include_hoteis = bool(st.session_state.get("rank_incluir_hoteis", False))
 
         route_seed_params = {
             "ano": None if ano == "Todos" else ano,
             "mes": query_mes(meses_selected),
             "categoria": categoria_param,
             "incluir_salario": include_salary,
+            "incluir_hoteis": include_hoteis,
             "ordenar_por": "total",
         }
         route_seed = route_json(
             "frota",
             route_seed_params,
         )
-        route_options = unique_filter_options(route_seed.get("rotas", []) or [])
+        route_options_base = unique_filter_options(route_seed.get("rotas", []) or [])
+        route_cost_rows = (
+            route_seed.get("custo_ganho_rotas", {}).get("rotas", [])
+            if isinstance(route_seed.get("custo_ganho_rotas"), dict)
+            else []
+        )
+        route_cost_map = {
+            str(row.get("rota")): row
+            for row in route_cost_rows
+            if isinstance(row, dict) and str(row.get("rota") or "").strip()
+        }
         route_key = "rank_rota_selecao"
         route_state_exists = route_key in st.session_state
         current_routes = st.session_state.get(route_key, [])
         if not isinstance(current_routes, list):
             current_routes = [current_routes] if current_routes else []
-        current_routes = [item for item in current_routes if item in route_options]
+        current_routes = [item for item in current_routes if item in route_options_base]
         if route_state_exists and st.session_state.get(route_key) != current_routes:
             st.session_state[route_key] = current_routes
         route_button_label = (
@@ -4846,9 +4900,38 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
                 help="Escolha uma ou mais rotas. Sem seleção, são usados os totais gerais do período.",
                 use_container_width=True,
             ):
+                route_order = st.selectbox(
+                    "Ordenar rotas",
+                    ["custo_ganho", "alfabetica"],
+                    key="rank_route_order",
+                    format_func=lambda value: (
+                        "Maior custo sobre ganho" if value == "custo_ganho" else "Ordem alfabética"
+                    ),
+                )
+                route_options = list(route_options_base)
+                if route_order == "custo_ganho":
+                    route_options.sort(
+                        key=lambda route: (
+                            bool(route_cost_map.get(str(route), {}).get("sem_ganho")),
+                            float(route_cost_map.get(str(route), {}).get("percentual") or 0.0),
+                            float(route_cost_map.get(str(route), {}).get("custo") or 0.0),
+                        ),
+                        reverse=True,
+                    )
+                else:
+                    route_options.sort(key=lambda route: str(route).casefold())
+
+                def route_filter_label(route: object) -> str:
+                    row = route_cost_map.get(str(route), {})
+                    if row.get("sem_ganho"):
+                        return f"{route} — sem ganho"
+                    percentage = row.get("percentual")
+                    return f"{route} — {fmt_percent(percentage)}" if percentage is not None else str(route)
+
                 route_kwargs = {
                     "key": route_key,
                     "selection_mode": "multi",
+                    "format_func": route_filter_label,
                     "label_visibility": "collapsed",
                     "width": "stretch",
                 }
@@ -4885,7 +4968,6 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
             placas_selected = st.multiselect("Placa", plate_options, **plate_kwargs)
             placas_selected = normalize_multiselect(placas_selected, st.session_state.get(plate_previous_key, ["Todos"]))
 
-        include_hoteis = bool(st.session_state.get("rank_incluir_hoteis", False))
         with cols[5]:
             include_hoteis = st.checkbox(
                 "Incluir hotéis",
@@ -5353,6 +5435,9 @@ def render_frota() -> None:
         or any(float(row.get("diaria") or 0) > 0 for row in ranking)
     )
     show_route_maintenance_daily = bool(selected_routes)
+
+    with st.container(key="frota_cost_gain_alerts"):
+        render_route_cost_gain_alerts(data.get("custo_ganho_rotas"))
 
     if selected_routes:
         weight_label = "Peso total da rota" if len(selected_routes) == 1 else "Peso total das rotas"
