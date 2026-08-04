@@ -3047,6 +3047,207 @@ def _ranking_freighter_daily_costs(
     return work[columns].sort_values(["Data", "PLACA"]).reset_index(drop=True)
 
 
+def _ranking_route_cost_gain_analysis(
+    df_peso: pd.DataFrame,
+    df_comb: pd.DataFrame,
+    df_manu: pd.DataFrame,
+    df_ped: pd.DataFrame,
+    df_peso_transport_general: pd.DataFrame,
+    df_salarios: pd.DataFrame,
+    df_hoteis: pd.DataFrame,
+    daily_rates: dict[str, float],
+) -> dict:
+    """Calcula custo/ganho por rota no período e em cada mês, sem novas consultas."""
+    empty_result = {"rotas": [], "mensal": []}
+    if df_peso.empty or not {"Data", "Mes", "PLACA"}.issubset(df_peso.columns):
+        return empty_result
+
+    peso = df_peso.copy()
+    peso["_RotaAnalise"] = _ranking_route_labels(peso)
+    peso["Mes"] = peso["Mes"].astype("string").str.strip()
+    route_names = sorted(
+        {str(route).strip() for route in peso["_RotaAnalise"].dropna().tolist() if str(route).strip()},
+        key=str.casefold,
+    )
+    if not route_names:
+        return empty_result
+
+    def _period(df: pd.DataFrame, month: str | None) -> pd.DataFrame:
+        if month is None or df.empty or "Mes" not in df.columns:
+            return df
+        return df.loc[df["Mes"].astype("string").str.strip().eq(str(month))].copy()
+
+    def _sum_value(df: pd.DataFrame, column: str) -> float:
+        if df.empty or column not in df.columns:
+            return 0.0
+        return float(pd.to_numeric(df[column], errors="coerce").fillna(0.0).sum())
+
+    def _scope_rows(month: str | None) -> list[dict]:
+        peso_scope = _period(peso, month)
+        comb_scope = _period(df_comb, month)
+        manu_scope = _period(df_manu, month)
+        ped_scope = _period(df_ped, month)
+        transport_scope = _period(df_peso_transport_general, month)
+        salary_scope = _period(df_salarios, month)
+        hotel_scope = _period(df_hoteis, month)
+        if peso_scope.empty:
+            return []
+
+        day_columns = ["Data", "Mes", "PLACA", "_RotaAnalise"]
+        route_days = peso_scope[day_columns].copy()
+        route_days["Data"] = pd.to_datetime(route_days["Data"], errors="coerce").dt.normalize()
+        route_days["PLACA"] = route_days["PLACA"].astype("string").str.strip()
+        route_days = route_days.dropna(subset=["Data", "PLACA", "_RotaAnalise"])
+        route_days = route_days[route_days["PLACA"] != ""].drop_duplicates(
+            ["Data", "PLACA", "_RotaAnalise"]
+        )
+        if route_days.empty:
+            return []
+        route_plate_pairs = route_days[["_RotaAnalise", "PLACA"]].drop_duplicates()
+
+        def _route_plate_costs(df: pd.DataFrame, column: str) -> dict[str, float]:
+            if df.empty or not {"PLACA", column}.issubset(df.columns):
+                return {}
+            costs = df[["PLACA", column]].copy()
+            costs["PLACA"] = costs["PLACA"].astype("string").str.strip()
+            costs[column] = pd.to_numeric(costs[column], errors="coerce").fillna(0.0)
+            costs = costs.groupby("PLACA", as_index=False)[column].sum()
+            merged = route_plate_pairs.merge(costs, on="PLACA", how="left")
+            merged[column] = merged[column].fillna(0.0)
+            return {
+                str(route): float(value or 0.0)
+                for route, value in merged.groupby("_RotaAnalise")[column].sum().items()
+            }
+
+        fuel_by_route = _route_plate_costs(comb_scope, "Custo")
+        toll_by_route = _route_plate_costs(ped_scope, "Custo")
+
+        general_days_by_plate = _ranking_active_days_by_plate(peso_scope)
+        maintenance_by_plate = _ranking_sum_by_plate(manu_scope, "Custo")
+        maintenance_daily_by_plate = {
+            plate: maintenance_by_plate.get(plate, 0.0) / active_days
+            for plate, active_days in general_days_by_plate.items()
+            if active_days
+        }
+        route_days["_Maintenance"] = (
+            route_days["PLACA"].map(maintenance_daily_by_plate).fillna(0.0).clip(lower=0)
+        )
+        maintenance_by_route = {
+            str(route): float(value or 0.0)
+            for route, value in route_days.groupby("_RotaAnalise")["_Maintenance"].sum().items()
+        }
+        route_days["_Freighter"] = route_days["PLACA"].map(daily_rates).fillna(0.0).clip(lower=0)
+        freighter_by_route = {
+            str(route): float(value or 0.0)
+            for route, value in route_days.groupby("_RotaAnalise")["_Freighter"].sum().items()
+        }
+
+        salary_by_route: dict[str, float] = {}
+        transport_selected = _ranking_filter_categories(peso_scope, ["Transporte"])
+        if not transport_selected.empty:
+            selected_transport_days = transport_selected[day_columns].copy()
+            selected_transport_days["Data"] = pd.to_datetime(
+                selected_transport_days["Data"], errors="coerce"
+            ).dt.normalize()
+            selected_transport_days["PLACA"] = selected_transport_days["PLACA"].astype("string").str.strip()
+            selected_transport_days = selected_transport_days.dropna(
+                subset=["Data", "PLACA", "_RotaAnalise"]
+            ).drop_duplicates(["Data", "PLACA", "_RotaAnalise"])
+            general_transport_days = _ranking_daily_average_costs(transport_scope, 0.0, "Custo")
+            salary_data = (
+                salary_scope[["Mes", "Valor"]].copy()
+                if not salary_scope.empty and {"Mes", "Valor"}.issubset(salary_scope.columns)
+                else pd.DataFrame(columns=["Mes", "Valor"])
+            )
+            if not general_transport_days.empty and not salary_data.empty:
+                salary_data["Mes"] = salary_data["Mes"].astype("string").str.strip()
+                salary_data["Valor"] = pd.to_numeric(
+                    salary_data["Valor"], errors="coerce"
+                ).fillna(0.0).clip(lower=0)
+                salary_by_month = salary_data.groupby("Mes")["Valor"].sum().to_dict()
+                general_days_by_month = general_transport_days.groupby("Mes").size().to_dict()
+                salary_daily_by_month = {
+                    str(key): float(salary_by_month.get(str(key), 0.0)) / int(day_count)
+                    for key, day_count in general_days_by_month.items()
+                    if day_count
+                }
+                selected_transport_days["_Salary"] = (
+                    selected_transport_days["Mes"]
+                    .astype("string")
+                    .map(salary_daily_by_month)
+                    .fillna(0.0)
+                    .clip(lower=0)
+                )
+                salary_by_route = {
+                    str(route): float(value or 0.0)
+                    for route, value in selected_transport_days.groupby("_RotaAnalise")["_Salary"].sum().items()
+                }
+
+        hotel_days = _sum_value(hotel_scope, "Dias") if "Dias" in hotel_scope.columns else 0.0
+        hotel_daily = _sum_value(hotel_scope, "Valor") / hotel_days if hotel_days else 0.0
+        route_day_counts = route_days.groupby("_RotaAnalise").size().to_dict()
+        gain_data = peso_scope[["_RotaAnalise", "Valor"]].copy()
+        gain_data["Valor"] = pd.to_numeric(gain_data["Valor"], errors="coerce").fillna(0.0)
+        gain_by_route = gain_data.groupby("_RotaAnalise")["Valor"].sum().to_dict()
+
+        rows: list[dict] = []
+        for route_name in sorted(route_day_counts, key=lambda value: str(value).casefold()):
+            route_key = str(route_name)
+            gain_total = float(gain_by_route.get(route_name, 0.0) or 0.0)
+            cost_total = (
+                float(fuel_by_route.get(route_key, 0.0))
+                + float(toll_by_route.get(route_key, 0.0))
+                + float(maintenance_by_route.get(route_key, 0.0))
+                + float(freighter_by_route.get(route_key, 0.0))
+                + float(salary_by_route.get(route_key, 0.0))
+                + max(hotel_daily, 0.0) * int(route_day_counts.get(route_name, 0) or 0)
+            )
+            no_gain = gain_total <= 0 and cost_total > 0
+            percentage = (cost_total / gain_total * 100) if gain_total > 0 else None
+            level = (
+                "vermelho"
+                if no_gain or (percentage is not None and percentage >= 100)
+                else "amarelo"
+                if percentage is not None and percentage >= 80
+                else "normal"
+            )
+            rows.append(
+                {
+                    "rota": route_key,
+                    "mes": month,
+                    "custo": round(cost_total, 2),
+                    "ganho": round(gain_total, 2),
+                    "percentual": round(percentage, 2) if percentage is not None else None,
+                    "sem_ganho": no_gain,
+                    "nivel": level,
+                }
+            )
+        return rows
+
+    route_rows = _scope_rows(None)
+    route_rows.sort(
+        key=lambda row: (
+            bool(row.get("sem_ganho")),
+            float(row.get("percentual") or 0.0),
+            float(row.get("custo") or 0.0),
+        ),
+        reverse=True,
+    )
+    months = sorted({str(month).strip() for month in peso["Mes"].dropna().tolist() if str(month).strip()})
+    monthly_rows = [row for month in months for row in _scope_rows(month)]
+    monthly_rows.sort(
+        key=lambda row: (
+            2 if row.get("nivel") == "vermelho" else 1 if row.get("nivel") == "amarelo" else 0,
+            bool(row.get("sem_ganho")),
+            float(row.get("percentual") or 0.0),
+            str(row.get("mes") or ""),
+            str(row.get("rota") or ""),
+        ),
+        reverse=True,
+    )
+    return {"rotas": route_rows, "mensal": monthly_rows}
+
+
 def _ranking_monthly_sum(frames: list[tuple[pd.DataFrame, str]], value_name: str) -> dict:
     monthly: dict[str, float] = defaultdict(float)
     for df, value_col in frames:
@@ -3265,6 +3466,17 @@ def data_frota(params: dict | None = None) -> dict:
         if general_hotel_days
         else 0.0
     )
+    daily_rates = _ranking_freighter_daily_rates()
+    route_cost_gain_analysis = _ranking_route_cost_gain_analysis(
+        _ranking_filter_plates(df_peso_general, placas),
+        _ranking_filter_plates(df_comb, placas),
+        _ranking_filter_plates(df_manu_general, placas),
+        _ranking_filter_plates(df_ped, placas),
+        df_peso_transport_general,
+        df_salarios_period,
+        df_hoteis_period,
+        daily_rates,
+    )
 
     rotas_disponiveis = sorted(_ranking_route_labels(df_peso_total).dropna().unique().tolist())
     if rotas:
@@ -3331,7 +3543,6 @@ def data_frota(params: dict | None = None) -> dict:
     total_ped = _ranking_sum_by_plate(df_ped, "Custo")
     peso_map = _ranking_sum_by_plate(df_peso, "Peso")
     valor_peso_map = _ranking_sum_by_plate(df_peso, "Valor")
-    daily_rates = _ranking_freighter_daily_rates()
     df_diarias = _ranking_freighter_daily_costs(df_peso, daily_rates)
     gasto_diarias_map = _ranking_sum_by_plate(df_diarias, "Custo")
     dias_trabalhados_map = _ranking_count_by_plate(df_diarias)
@@ -3526,6 +3737,7 @@ def data_frota(params: dict | None = None) -> dict:
         "placas": placas_disponiveis,
         "ordenar_por": sort_selection,
         "ranking": ranking,
+        "custo_ganho_rotas": route_cost_gain_analysis,
         "dominancia_peso": dominancia_peso,
         "mensal_total": mensal_total,
         "peso_mensal": mensal_peso,
