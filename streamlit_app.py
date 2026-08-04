@@ -18,6 +18,7 @@ os.environ.setdefault("JR_SKIP_WARM_CACHE", "1")
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 import app as backend
@@ -29,7 +30,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-remove-media-diaria-rota-v1"
+APP_VERSION = "deploy-busca-placas-foco-visivel-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -559,6 +560,9 @@ def inject_css() -> None:
         }}
 
         .st-key-rank_placa div[data-baseweb="select"] input {{
+          flex: 1 1 220px !important;
+          width: 100% !important;
+          min-width: 220px !important;
           opacity: 1 !important;
           visibility: visible !important;
           color: var(--jr-blue) !important;
@@ -5116,6 +5120,38 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
                 if not plate_state_exists:
                     plate_kwargs["default"] = current_plates
                 placas_selected = st.multiselect("Placas", plate_options, **plate_kwargs)
+                components.html(
+                    """
+                    <script>
+                    (() => {
+                      const parentDocument = window.parent.document;
+                      const focusPlateSearch = () => {
+                        const inputs = Array.from(
+                          parentDocument.querySelectorAll(
+                            '.st-key-rank_placa input[role="combobox"]'
+                          )
+                        ).filter((input) => input.offsetParent !== null && !input.disabled);
+                        const input = inputs.at(-1);
+                        if (!input) return false;
+                        input.focus({ preventScroll: true });
+                        input.select();
+                        return parentDocument.activeElement === input;
+                      };
+
+                      let attempts = 0;
+                      const timer = window.setInterval(() => {
+                        attempts += 1;
+                        if (focusPlateSearch() || attempts >= 30) {
+                          window.clearInterval(timer);
+                        }
+                      }, 50);
+                      window.setTimeout(focusPlateSearch, 0);
+                    })();
+                    </script>
+                    """,
+                    height=0,
+                    scrolling=False,
+                )
                 if placas_selected:
                     st.caption(f"{len(placas_selected)} placa(s) selecionada(s).")
                 else:
