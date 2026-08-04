@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-custo-sobre-ganho-geral-v1"
+APP_VERSION = "deploy-graficos-alinhados-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
@@ -3898,8 +3898,12 @@ def chart_grid(charts: list[tuple[str, go.Figure]], *, key_prefix: str = "chart"
             continue
 
         if index + 1 < len(charts) and not chart_prefers_full_width(charts[index + 1][1]):
+            row_items = charts[index : index + 2]
+            row_height = max(int(item[1].layout.height or 360) for item in row_items)
+            for _row_title, row_fig in row_items:
+                row_fig.update_layout(height=row_height)
             cols = st.columns(2)
-            for offset, (col, item) in enumerate(zip(cols, charts[index : index + 2])):
+            for offset, (col, item) in enumerate(zip(cols, row_items)):
                 with col:
                     chart_card(item[0], item[1], key=f"{key_prefix}_{index + offset}")
             index += 2
