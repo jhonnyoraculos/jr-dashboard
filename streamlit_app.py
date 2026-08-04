@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-scroll-fluido-v1"
+APP_VERSION = "deploy-remove-cabecalho-ranking-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -5600,19 +5600,6 @@ def render_frota() -> None:
     if rotas_dominadas:
         st.html(dominance_route_ranking_html(rotas_dominadas))
 
-    header_columns = ["#", "Placa", "Total", "Manutencao", "Pedagio/Extras", "Peso"]
-    if show_daily:
-        header_columns[3:3] = ["Diarias"]
-    if not freteiro_mode:
-        header_columns[3:3] = ["Combustivel"]
-        header_columns.extend(["KM", "Litros"])
-    if show_route_maintenance_daily:
-        maintenance_header_index = header_columns.index("Manutencao") + 1
-        header_columns.insert(maintenance_header_index, "Manut./dia")
-    st.markdown(
-        f'<div class="ranking-header">{"".join(f"<span>{h(column)}</span>" for column in header_columns)}</div>',
-        unsafe_allow_html=True,
-    )
     with st.container(key="frota_ranking_table"):
         st.html(
             ranking_native_table_html(
