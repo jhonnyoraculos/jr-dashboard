@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-busca-placas-visivel-v1"
+APP_VERSION = "deploy-busca-placas-layout-corrigido-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -558,12 +558,7 @@ def inject_css() -> None:
           box-shadow: none !important;
         }}
 
-        .st-key-rank_placa input,
-        .st-key-rank_placa input[role="combobox"] {{
-          display: block !important;
-          flex: 1 1 150px !important;
-          width: auto !important;
-          min-width: 150px !important;
+        .st-key-rank_placa div[data-baseweb="select"] input {{
           opacity: 1 !important;
           visibility: visible !important;
           color: var(--jr-blue) !important;
@@ -572,9 +567,10 @@ def inject_css() -> None:
           background: transparent !important;
           font-size: 14px !important;
           font-weight: 600 !important;
+          text-shadow: none !important;
         }}
 
-        .st-key-rank_placa input::placeholder {{
+        .st-key-rank_placa div[data-baseweb="select"] input::placeholder {{
           opacity: .72 !important;
           color: var(--muted) !important;
           -webkit-text-fill-color: var(--muted) !important;
