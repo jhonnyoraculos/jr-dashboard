@@ -29,7 +29,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-calendario-mensal-ranking-v1"
+APP_VERSION = "deploy-filtros-ranking-alinhados-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -452,6 +452,7 @@ def inject_css() -> None:
 
         .st-key-rank_filterbar .st-key-rank_incluir_hoteis,
         .st-key-rank_filterbar .st-key-rank_incluir_salario {{
+          width: 100%;
           height: 38px;
           display: flex;
           align-items: stretch;
@@ -464,6 +465,11 @@ def inject_css() -> None:
         .st-key-rank_filterbar [data-testid="column"]:has(.st-key-rank_incluir_salario) {{
           align-self: flex-start;
           padding-top: 0 !important;
+        }}
+
+        .st-key-rank_filterbar .st-key-rank_incluir_hoteis > div,
+        .st-key-rank_filterbar .st-key-rank_incluir_salario > div {{
+          width: 100%;
         }}
 
         .st-key-rank_filterbar .st-key-rank_incluir_hoteis [data-testid="stCheckbox"],
@@ -590,6 +596,49 @@ def inject_css() -> None:
           flex: 1 1 150px !important;
           min-width: 145px !important;
           max-width: none !important;
+        }}
+
+        .st-key-rank_filterbar {{
+          margin-bottom: 34px;
+          padding: 6px 18px 12px;
+        }}
+
+        .st-key-rank_filterbar [data-testid="column"] > div,
+        .st-key-rank_filterbar .stButton,
+        .st-key-rank_filterbar [data-testid="stPopover"] {{
+          width: 100%;
+        }}
+
+        @media (min-width: 1550px) {{
+          .st-key-rank_filterbar [data-testid="stHorizontalBlock"] {{
+            display: grid !important;
+            grid-template-columns: .65fr 1fr 1.05fr 1.1fr 1.15fr .78fr .82fr 1fr .88fr .68fr;
+            gap: 8px !important;
+            align-items: start;
+          }}
+
+          .st-key-rank_filterbar [data-testid="column"] {{
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            flex: none !important;
+          }}
+        }}
+
+        @media (min-width: 781px) and (max-width: 1549px) {{
+          .st-key-rank_filterbar [data-testid="stHorizontalBlock"] {{
+            display: grid !important;
+            grid-template-columns: .7fr 1fr 1fr 1fr 1fr;
+            gap: 8px !important;
+            align-items: start;
+          }}
+
+          .st-key-rank_filterbar [data-testid="column"] {{
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            flex: none !important;
+          }}
         }}
 
         .filter-back {{
