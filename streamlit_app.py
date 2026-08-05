@@ -30,7 +30,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-tabela-todos-registros-v1"
+APP_VERSION = "deploy-remove-graficos-pedagio-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 DATA_EDITOR_ALL_PAGES = "__todos_os_registros__"
@@ -9521,9 +9521,7 @@ def render_pedagio() -> None:
         ("gasto_mensal", "Gasto mensal", monthly_fig),
         ("gasto_semana", "Gasto semanal (últimos 7 dias)", weekly_fig),
         ("gasto_tipo", "Gasto por tipo", pie_chart(data.get("gasto_por_tipo", {}).get("Tipo", []), data.get("gasto_por_tipo", {}).get("Custo", []))),
-        ("seguro_placa", "Seguro por placa", bar_chart(data.get("seguro_por_placa", {}).get("PLACA", []), data.get("seguro_por_placa", {}).get("Custo", []), horizontal=True, sort_desc=True, show_text=True)),
         ("gasto_placa", "Gasto por placa", plate_fig),
-        ("gasto_segmento", "Gasto por segmento", bar_chart(data.get("gasto_por_categoria", {}).get("Categoria", []), data.get("gasto_por_categoria", {}).get("Custo", []))),
     ]
     render_controlled_dashboard("ped", title="JR Dashboard - Pedágio/Extras", kpis=kpis, charts=charts)
     footer("Dados atualizados pelo Neon. © JR")
