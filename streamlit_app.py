@@ -30,10 +30,11 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-remove-graficos-pedagio-v1"
+APP_VERSION = "deploy-filtro-sem-informacao-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 DATA_EDITOR_ALL_PAGES = "__todos_os_registros__"
+TABLE_FILTER_EMPTY_LABEL = "Sem informação"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -6535,9 +6536,20 @@ def _save_dataset_editor(
 def _filter_text_options(series: pd.Series) -> list[str]:
     if series is None or series.empty:
         return []
-    values = series.dropna().astype("string").str.strip()
-    values = values[(values != "") & (~values.str.lower().isin(["nan", "none", "nat", "<na>"]))]
-    return sorted(values.unique().tolist())
+    values = series.astype("string").fillna("").str.strip()
+    empty_mask = (values == "") | values.str.lower().isin(["nan", "none", "nat", "<na>"])
+    options = sorted(values.loc[~empty_mask].unique().tolist())
+    if bool(empty_mask.any()):
+        options.append(TABLE_FILTER_EMPTY_LABEL)
+    return options
+
+
+def _filter_text_labels(series: pd.Series) -> pd.Series:
+    if series is None or series.empty:
+        return pd.Series(dtype="string")
+    labels = series.astype("string").fillna("").str.strip()
+    empty_mask = (labels == "") | labels.str.lower().isin(["nan", "none", "nat", "<na>"])
+    return labels.mask(empty_mask, TABLE_FILTER_EMPTY_LABEL)
 
 
 def _parse_filter_dates(series: pd.Series) -> pd.Series:
@@ -6568,16 +6580,18 @@ def _filter_date_options(series: pd.Series) -> list[str]:
     labels = _filter_date_labels(series)
     if labels.empty:
         return []
-    valid = labels[(labels != "") & (~labels.str.lower().isin(["nan", "none", "nat", "<na>"]))]
-    if valid.empty:
-        return []
+    empty_mask = (labels == "") | labels.str.lower().isin(["nan", "none", "nat", "<na>"])
+    valid = labels.loc[~empty_mask]
     rows = []
     for index, label in enumerate(valid.drop_duplicates().tolist()):
         parsed = pd.to_datetime(label, format="%d/%m/%Y", errors="coerce", dayfirst=True)
         order = parsed.toordinal() if pd.notna(parsed) else 10**9 + index
         rows.append((order, label))
     rows.sort(key=lambda item: (item[0], item[1]))
-    return [label for _, label in rows]
+    options = [label for _, label in rows]
+    if bool(empty_mask.any()):
+        options.append(TABLE_FILTER_EMPTY_LABEL)
+    return options
 
 
 def _sort_table_recent_first(table: pd.DataFrame) -> pd.DataFrame:
@@ -6670,7 +6684,12 @@ def _apply_table_filters(table: pd.DataFrame, columns: list[str], key_prefix: st
                 with filter_cols[idx % len(filter_cols)]:
                     selected = st.multiselect("Dia" if is_date_filter else column, options, key=filter_key)
                 if selected:
-                    values = _filter_date_labels(filtered[column]) if is_date_filter else filtered[column].astype("string").fillna("").str.strip()
+                    if is_date_filter:
+                        values = _filter_date_labels(filtered[column])
+                        empty_mask = (values == "") | values.str.lower().isin(["nan", "none", "nat", "<na>"])
+                        values = values.mask(empty_mask, TABLE_FILTER_EMPTY_LABEL)
+                    else:
+                        values = _filter_text_labels(filtered[column])
                     filtered = filtered.loc[values.isin(selected)].copy()
 
         st.button("Limpar filtros", key=f"{key_prefix}_clear_filters", on_click=_clear_table_filter_state, args=(key_prefix,))
