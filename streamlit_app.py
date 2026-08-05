@@ -30,7 +30,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-busca-placas-foco-visivel-v1"
+APP_VERSION = "deploy-paginacao-session-state-segura-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -6851,9 +6851,15 @@ def _render_dataset_editor(
     total_rows = len(filtered_table)
     page_count = max(1, (total_rows + DATA_EDITOR_PAGE_SIZE - 1) // DATA_EDITOR_PAGE_SIZE)
     page_key = f"{key_prefix}_editor_page"
-    current_page = int(st.session_state.get(page_key, 1) or 1)
+    raw_current_page = st.session_state.get(page_key, 1)
+    try:
+        current_page = int(raw_current_page or 1)
+    except (TypeError, ValueError):
+        current_page = 1
+        st.session_state[page_key] = current_page
     if current_page < 1 or current_page > page_count:
-        st.session_state[page_key] = 1
+        current_page = 1
+        st.session_state[page_key] = current_page
     if page_count > 1:
         page = st.selectbox(
             "Página da tabela",
