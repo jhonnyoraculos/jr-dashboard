@@ -30,9 +30,10 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-paginacao-session-state-segura-v1"
+APP_VERSION = "deploy-tabela-todos-registros-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
+DATA_EDITOR_ALL_PAGES = "__todos_os_registros__"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
@@ -6852,28 +6853,43 @@ def _render_dataset_editor(
     page_count = max(1, (total_rows + DATA_EDITOR_PAGE_SIZE - 1) // DATA_EDITOR_PAGE_SIZE)
     page_key = f"{key_prefix}_editor_page"
     raw_current_page = st.session_state.get(page_key, 1)
-    try:
-        current_page = int(raw_current_page or 1)
-    except (TypeError, ValueError):
-        current_page = 1
-        st.session_state[page_key] = current_page
-    if current_page < 1 or current_page > page_count:
-        current_page = 1
-        st.session_state[page_key] = current_page
+    if raw_current_page == DATA_EDITOR_ALL_PAGES:
+        current_page = DATA_EDITOR_ALL_PAGES
+    else:
+        try:
+            current_page = int(raw_current_page or 1)
+        except (TypeError, ValueError):
+            current_page = 1
+            st.session_state[page_key] = current_page
+        if current_page < 1 or current_page > page_count:
+            current_page = 1
+            st.session_state[page_key] = current_page
     if page_count > 1:
+        page_options = [*range(1, page_count + 1), DATA_EDITOR_ALL_PAGES]
         page = st.selectbox(
             "Página da tabela",
-            list(range(1, page_count + 1)),
+            page_options,
             key=page_key,
-            format_func=lambda value: f"Página {value} de {page_count}",
+            format_func=lambda value: (
+                f"Todos os registros ({total_rows})"
+                if value == DATA_EDITOR_ALL_PAGES
+                else f"Página {value} de {page_count}"
+            ),
         )
     else:
         page = 1
-    start_row = (int(page) - 1) * DATA_EDITOR_PAGE_SIZE
-    end_row = min(start_row + DATA_EDITOR_PAGE_SIZE, total_rows)
+    if page == DATA_EDITOR_ALL_PAGES:
+        start_row = 0
+        end_row = total_rows
+    else:
+        start_row = (int(page) - 1) * DATA_EDITOR_PAGE_SIZE
+        end_row = min(start_row + DATA_EDITOR_PAGE_SIZE, total_rows)
     editor_table = filtered_table.iloc[start_row:end_row].copy()
     if total_rows:
-        st.caption(f"Exibindo registros {start_row + 1} a {end_row} de {total_rows}. Os mais recentes aparecem primeiro.")
+        if page == DATA_EDITOR_ALL_PAGES:
+            st.caption(f"Exibindo todos os {total_rows} registros filtrados. Os mais recentes aparecem primeiro.")
+        else:
+            st.caption(f"Exibindo registros {start_row + 1} a {end_row} de {total_rows}. Os mais recentes aparecem primeiro.")
 
     visible_row_ids = set(pd.to_numeric(editor_table[ROW_ID_COLUMN], errors="coerce").dropna().astype(int).tolist())
     nonce = st.session_state.get(f"{key_prefix}_editor_nonce", 0)
