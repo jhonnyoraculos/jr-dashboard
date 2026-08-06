@@ -2949,6 +2949,47 @@ def _ranking_filter_routes(df: pd.DataFrame, routes: list[str]) -> pd.DataFrame:
     return df.loc[normalized.isin(targets)].copy()
 
 
+def _ranking_eligible_route_weight_rows(
+    df_peso: pd.DataFrame,
+    df_route_km: pd.DataFrame,
+) -> pd.DataFrame:
+    """Mantem Freteiros e placas com rodagem cadastrada na rota e no mes."""
+    required = {"Mes", "Rota", "PLACA", "Categoria"}
+    if df_peso.empty or not required.issubset(df_peso.columns):
+        return df_peso.iloc[0:0].copy()
+
+    work = df_peso.copy()
+    work["__Route"] = work["Rota"].astype("string").fillna("").str.strip().str.casefold()
+    work["__Month"] = work["Mes"].astype("string").fillna("").str.strip()
+    work["__Plate"] = work["PLACA"].astype("string").fillna("").str.strip()
+    is_freighter = _normalize_categoria(work["Categoria"]).eq("freteiro")
+
+    registered_keys: set[tuple[str, str, str]] = set()
+    route_required = {"Mes", "Rota", "PLACA", "Km Rodados"}
+    if not df_route_km.empty and route_required.issubset(df_route_km.columns):
+        registered = df_route_km[["Mes", "Rota", "PLACA", "Km Rodados"]].copy()
+        registered["Km Rodados"] = pd.to_numeric(
+            registered["Km Rodados"], errors="coerce"
+        ).fillna(0.0)
+        registered = registered[registered["Km Rodados"] > 0]
+        registered_keys = {
+            (str(month).strip(), str(route).strip().casefold(), str(plate).strip())
+            for month, route, plate in registered[["Mes", "Rota", "PLACA"]].itertuples(index=False)
+            if str(month).strip() and str(route).strip() and str(plate).strip()
+        }
+
+    row_keys = pd.Series(
+        list(zip(work["__Month"], work["__Route"], work["__Plate"])),
+        index=work.index,
+        dtype="object",
+    )
+    has_registered_mileage = row_keys.isin(registered_keys)
+    has_route = work["__Route"].ne("")
+    return work.loc[has_route & (is_freighter | has_registered_mileage)].drop(
+        columns=["__Route", "__Month", "__Plate"]
+    )
+
+
 def _ranking_filter_route_day_rows(df: pd.DataFrame, route_weight_rows: pd.DataFrame) -> pd.DataFrame:
     """Mantém lançamentos ocorridos na mesma data e placa dos pesos da rota."""
     required = {"Data", "PLACA"}
@@ -3657,6 +3698,10 @@ def data_frota(params: dict | None = None) -> dict:
 
     df_manu_general = df_manu.copy()
     df_peso_general = df_peso.copy()
+    df_peso_route_eligible = _ranking_eligible_route_weight_rows(
+        df_peso_general,
+        df_rodagem_rota,
+    )
     general_days_by_plate = _ranking_active_days_by_plate(df_peso_general)
     general_maintenance_by_plate = _ranking_sum_by_plate(df_manu_general, "Custo")
     maintenance_daily_by_plate = {
@@ -3686,7 +3731,7 @@ def data_frota(params: dict | None = None) -> dict:
         df_km,
     )
     route_cost_gain_analysis = _ranking_route_cost_gain_analysis(
-        _ranking_filter_plates(df_peso_general, placas),
+        _ranking_filter_plates(df_peso_route_eligible, placas),
         _ranking_filter_plates(route_fuel_costs_all, placas),
         _ranking_filter_plates(df_manu_general, placas),
         _ranking_filter_plates(df_ped, placas),
@@ -3696,11 +3741,13 @@ def data_frota(params: dict | None = None) -> dict:
         daily_rates,
     )
 
-    rotas_disponiveis = sorted(_ranking_route_labels(df_peso_total).dropna().unique().tolist())
+    rotas_disponiveis = sorted(
+        _ranking_route_labels(df_peso_route_eligible).dropna().unique().tolist()
+    )
     route_fuel_warnings: list[str] = []
     if rotas:
-        df_peso = _ranking_filter_routes(df_peso, rotas)
-        df_peso_total = _ranking_filter_routes(df_peso_total, rotas)
+        df_peso = _ranking_filter_routes(df_peso_route_eligible, rotas)
+        df_peso_total = df_peso.copy()
         route_plates = (
             sorted(
                 {
@@ -3721,7 +3768,11 @@ def data_frota(params: dict | None = None) -> dict:
                 df_comb,
                 df_km,
             )
-            if selected_route_km.empty:
+            needs_mileage = (
+                "Categoria" in df_peso.columns
+                and not _normalize_categoria(df_peso["Categoria"]).eq("freteiro").all()
+            )
+            if needs_mileage and selected_route_km.empty:
                 route_fuel_warnings.append(
                     "Nenhuma rodagem em KM foi cadastrada para as rotas, placas e meses selecionados."
                 )
