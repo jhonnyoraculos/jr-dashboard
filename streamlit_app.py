@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
+import importlib
 import os
 import re
 import subprocess
@@ -22,6 +23,15 @@ import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 import app as backend
+
+# O Streamlit pode recarregar este arquivo sem reiniciar o processo Python.
+# Nesse intervalo, o modulo ``app`` pode continuar em memoria na versao anterior
+# ao deploy. Recarregue-o quando a tela nova depender da rodagem por rota.
+if not all(
+    hasattr(backend, feature)
+    for feature in ("load_rodagem_rota", "upsert_dashboard_records")
+):
+    backend = importlib.reload(backend)
 
 
 JR_BLUE = "#1C2D6B"
