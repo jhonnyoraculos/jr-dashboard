@@ -2871,6 +2871,32 @@ def _ranking_filter_routes(df: pd.DataFrame, routes: list[str]) -> pd.DataFrame:
     return df.loc[normalized.isin(targets)].copy()
 
 
+def _ranking_filter_route_day_rows(df: pd.DataFrame, route_weight_rows: pd.DataFrame) -> pd.DataFrame:
+    """Mantém lançamentos ocorridos na mesma data e placa dos pesos da rota."""
+    required = {"Data", "PLACA"}
+    if df.empty or route_weight_rows.empty:
+        return df.iloc[0:0].copy()
+    if not required.issubset(df.columns) or not required.issubset(route_weight_rows.columns):
+        return df.iloc[0:0].copy()
+
+    route_days = route_weight_rows[["Data", "PLACA"]].copy()
+    route_days["__RouteDate"] = pd.to_datetime(route_days["Data"], errors="coerce").dt.normalize()
+    route_days["__RoutePlate"] = route_days["PLACA"].astype("string").str.strip()
+    route_days = (
+        route_days.dropna(subset=["__RouteDate", "__RoutePlate"])
+        .loc[lambda frame: frame["__RoutePlate"] != "", ["__RouteDate", "__RoutePlate"]]
+        .drop_duplicates()
+    )
+    if route_days.empty:
+        return df.iloc[0:0].copy()
+
+    work = df.copy()
+    work["__RouteDate"] = pd.to_datetime(work["Data"], errors="coerce").dt.normalize()
+    work["__RoutePlate"] = work["PLACA"].astype("string").str.strip()
+    matched = work.merge(route_days, on=["__RouteDate", "__RoutePlate"], how="inner", sort=False)
+    return matched.drop(columns=["__RouteDate", "__RoutePlate"])
+
+
 def _ranking_sum_by_plate(df: pd.DataFrame, value_col: str) -> dict[str, float]:
     if df.empty or "PLACA" not in df.columns or value_col not in df.columns:
         return {}
@@ -3103,16 +3129,18 @@ def _ranking_route_cost_gain_analysis(
         )
         if route_days.empty:
             return []
-        route_plate_pairs = route_days[["_RotaAnalise", "PLACA"]].drop_duplicates()
+        route_day_pairs = route_days[["_RotaAnalise", "Data", "PLACA"]].drop_duplicates()
 
         def _route_plate_costs(df: pd.DataFrame, column: str) -> dict[str, float]:
-            if df.empty or not {"PLACA", column}.issubset(df.columns):
+            if df.empty or not {"Data", "PLACA", column}.issubset(df.columns):
                 return {}
-            costs = df[["PLACA", column]].copy()
+            costs = df[["Data", "PLACA", column]].copy()
+            costs["Data"] = pd.to_datetime(costs["Data"], errors="coerce").dt.normalize()
             costs["PLACA"] = costs["PLACA"].astype("string").str.strip()
             costs[column] = pd.to_numeric(costs[column], errors="coerce").fillna(0.0)
-            costs = costs.groupby("PLACA", as_index=False)[column].sum()
-            merged = route_plate_pairs.merge(costs, on="PLACA", how="left")
+            costs = costs.dropna(subset=["Data", "PLACA"])
+            costs = costs[costs["PLACA"] != ""].groupby(["Data", "PLACA"], as_index=False)[column].sum()
+            merged = route_day_pairs.merge(costs, on=["Data", "PLACA"], how="left")
             merged[column] = merged[column].fillna(0.0)
             return {
                 str(route): float(value or 0.0)
@@ -3494,8 +3522,8 @@ def data_frota(params: dict | None = None) -> dict:
             else []
         )
         if route_plates:
-            df_comb = _ranking_filter_plates(df_comb, route_plates)
-            df_ped = _ranking_filter_plates(df_ped, route_plates)
+            df_comb = _ranking_filter_route_day_rows(df_comb, df_peso)
+            df_ped = _ranking_filter_route_day_rows(df_ped, df_peso)
             df_comb_metrics = _ranking_filter_plates(df_comb_metrics, route_plates)
             df_manu = _ranking_filter_plates(df_manu, route_plates)
             df_km = _ranking_filter_plates(df_km, route_plates)
