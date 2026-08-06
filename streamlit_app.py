@@ -30,7 +30,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-rota-custos-por-dia-v1"
+APP_VERSION = "deploy-rodagem-mensal-por-rota-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 DATA_EDITOR_ALL_PAGES = "__todos_os_registros__"
@@ -58,6 +58,7 @@ BACKUP_TABLES = [
     ("pneus", "Pneus", "pneus", backend.load_pneus),
     ("hoteis", "Hoteis", "hoteis", backend.load_hoteis),
     ("peso", "Peso", "peso", backend.load_peso),
+    ("rodagem_rota", "Rodagem por rota", "rodagem_por_rota", backend.load_rodagem_rota),
     ("pedagio", "Pedagio Extras", "pedagio_extras", backend.load_pedagio),
 ]
 
@@ -5730,6 +5731,14 @@ def render_frota() -> None:
     with st.container(key="frota_kpis"):
         render_kpis(kpi_items)
 
+    route_km_warnings = data.get("avisos_rodagem_rota", []) or []
+    if selected_routes and route_km_warnings:
+        st.warning("Revise a rodagem em KM usada no cálculo de combustível da rota:")
+        for warning in route_km_warnings[:8]:
+            st.write(f"- {warning}")
+        if len(route_km_warnings) > 8:
+            st.write(f"...mais {len(route_km_warnings) - 8} aviso(s).")
+
     if len(selected_routes) >= 2:
         with st.container(key="frota_route_compare"):
             render_frota_route_compare(
@@ -6978,11 +6987,16 @@ def _parse_sheet_date(value: object) -> tuple[date, str] | None:
 
 
 def _parse_sheet_month(value: object) -> tuple[str, date] | None:
-    parsed_date = _parse_sheet_date(value)
-    if parsed_date:
-        data, mes = parsed_date
-        return mes, date(data.year, data.month, 1)
     text = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii").lower().strip()
+    is_full_date = bool(
+        re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", text)
+        or re.fullmatch(r"\d{1,2}/\d{1,2}/\d{2,4}", text)
+    )
+    if not isinstance(value, str) or is_full_date:
+        parsed_date = _parse_sheet_date(value)
+        if parsed_date:
+            data, mes = parsed_date
+            return mes, date(data.year, data.month, 1)
     month = None
     month_names = {
         "jan": 1,
@@ -7074,6 +7088,13 @@ PESO_ROUTE_SHEET_ALIASES = {
     "ROTA": ["ROTA"],
 }
 
+RODAGEM_ROTA_SHEET_ALIASES = {
+    "KM": ["KM", "KMRODADOS", "KMROTA"],
+    "MES": ["MES", "MS"],
+    "ROTA": ["ROTA"],
+    "PLACA": ["PLACA", "PLACAS"],
+}
+
 
 @st.cache_data(show_spinner=False, max_entries=64)
 def _sheet_xlsx_bytes(df: pd.DataFrame, sheet_name: str) -> bytes:
@@ -7108,6 +7129,38 @@ def _sheet_xlsx_bytes(df: pd.DataFrame, sheet_name: str) -> bytes:
             width = min(max((len(value) for value in values), default=10) + 2, 42)
             worksheet.column_dimensions[column_cells[0].column_letter].width = max(width, 12)
 
+    return output.getvalue()
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+def _peso_workbook_bytes(entregas: pd.DataFrame, rodagem_rota: pd.DataFrame) -> bytes:
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        for sheet_name, frame, header_color in (
+            ("ENTREGAS", entregas.copy(), "1C2D6B"),
+            ("RODAGEM POR ROTA", rodagem_rota.copy(), "FFF200"),
+        ):
+            if "DATA" in frame.columns:
+                parsed = pd.to_datetime(frame["DATA"], errors="coerce")
+                frame["DATA"] = parsed.map(lambda value: value.date() if pd.notna(value) else None)
+            frame.to_excel(writer, sheet_name=sheet_name, index=False)
+            worksheet = writer.sheets[sheet_name]
+            worksheet.freeze_panes = "A2"
+            worksheet.auto_filter.ref = worksheet.dimensions
+            for cell in worksheet[1]:
+                cell.fill = PatternFill("solid", fgColor=header_color)
+                cell.font = Font(color="000000" if header_color == "FFF200" else "FFFFFF", bold=True)
+                cell.alignment = Alignment(horizontal="center")
+            if "DATA" in frame.columns:
+                data_column = list(frame.columns).index("DATA") + 1
+                for row in worksheet.iter_rows(min_row=2, min_col=data_column, max_col=data_column):
+                    row[0].number_format = "DD/MM/YYYY"
+            for column_cells in worksheet.columns:
+                values = [str(cell.value) if cell.value is not None else "" for cell in column_cells]
+                width = min(max((len(value) for value in values), default=10) + 2, 42)
+                worksheet.column_dimensions[column_cells[0].column_letter].width = max(width, 12)
     return output.getvalue()
 
 
@@ -7305,16 +7358,35 @@ def _render_sheet_downloads(
         st.caption(f"A planilha com dados contem {len(data_frame)} registro(s). Os dois arquivos usam o formato aceito abaixo.")
 
 
-def _read_uploaded_sheet(uploaded_file, aliases: dict[str, list[str]]) -> pd.DataFrame:
+def _read_uploaded_sheet(
+    uploaded_file,
+    aliases: dict[str, list[str]],
+    *,
+    sheet_names: list[str] | None = None,
+    fallback_to_active: bool = True,
+) -> pd.DataFrame:
     name = clean_text(getattr(uploaded_file, "name", "")).lower()
     if name.endswith(".csv"):
         raw = pd.read_csv(uploaded_file, sep=None, engine="python", header=None)
         return _detect_sheet_header(raw, aliases)
-    raw = _read_uploaded_excel_rows(uploaded_file, aliases)
+    raw = _read_uploaded_excel_rows(
+        uploaded_file,
+        aliases,
+        sheet_names=sheet_names,
+        fallback_to_active=fallback_to_active,
+    )
+    if raw.empty:
+        return pd.DataFrame()
     return _detect_sheet_header(raw, aliases)
 
 
-def _read_uploaded_excel_rows(uploaded_file, aliases: dict[str, list[str]]) -> pd.DataFrame:
+def _read_uploaded_excel_rows(
+    uploaded_file,
+    aliases: dict[str, list[str]],
+    *,
+    sheet_names: list[str] | None = None,
+    fallback_to_active: bool = True,
+) -> pd.DataFrame:
     from openpyxl import load_workbook
 
     try:
@@ -7323,7 +7395,18 @@ def _read_uploaded_excel_rows(uploaded_file, aliases: dict[str, list[str]]) -> p
         pass
 
     workbook = load_workbook(uploaded_file, read_only=True, data_only=True)
-    worksheet = workbook.active
+    worksheet = None
+    if sheet_names:
+        accepted = {_normalize_sheet_header(name) for name in sheet_names}
+        worksheet = next(
+            (item for item in workbook.worksheets if _normalize_sheet_header(item.title) in accepted),
+            None,
+        )
+    if worksheet is None and fallback_to_active:
+        worksheet = workbook.active
+    if worksheet is None:
+        workbook.close()
+        return pd.DataFrame()
     rows: list[list[object]] = []
     header_found = False
     blank_after_header = 0
@@ -7526,6 +7609,58 @@ def _km_rows_from_sheet(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
         mes, _data = mes_info
         rows.append({"Mes": mes, "PLACA": placa, "Km Rodados": km})
     return rows, errors
+
+
+def _rodagem_rota_rows_from_sheet(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
+    if df is None or df.empty:
+        return [], []
+    header_map = {_normalize_sheet_header(column): column for column in df.columns}
+    resolved = {
+        field: next((header_map[key] for key in aliases if key in header_map), None)
+        for field, aliases in RODAGEM_ROTA_SHEET_ALIASES.items()
+    }
+    labels = {"KM": "KM", "MES": "MÊS", "ROTA": "ROTA", "PLACA": "PLACA"}
+    missing = [labels[field] for field in labels if resolved.get(field) is None]
+    if missing:
+        return [], [f"Colunas faltando na aba RODAGEM POR ROTA: {', '.join(missing)}."]
+
+    rows: list[dict] = []
+    errors: list[str] = []
+    for idx, row in df.iterrows():
+        km = _parse_brl_number(row.get(resolved["KM"]))
+        mes_info = _parse_sheet_month(row.get(resolved["MES"]))
+        rota = _sheet_text(row, resolved.get("ROTA"), upper=True)
+        placa_raw = _sheet_text(row, resolved.get("PLACA"), upper=True)
+        placa_normalizada = backend._normalize_plate_value(placa_raw)
+        placa = "" if pd.isna(placa_normalizada) else str(placa_normalizada)
+
+        if not any([km is not None, mes_info, rota, placa_raw]):
+            continue
+        missing_row = []
+        if km is None or km <= 0:
+            missing_row.append("KM maior que zero")
+        if mes_info is None:
+            missing_row.append("MÊS")
+        if not rota:
+            missing_row.append("ROTA")
+        if not placa:
+            missing_row.append("PLACA")
+        if missing_row:
+            errors.append(f"Linha {idx + 2}: preencher {', '.join(missing_row)}.")
+            continue
+
+        mes, _data = mes_info
+        rows.append({"Mes": mes, "Rota": rota, "PLACA": placa, "Km Rodados": float(km)})
+
+    if not rows:
+        return [], errors
+    grouped = (
+        pd.DataFrame(rows)
+        .groupby(["Mes", "Rota", "PLACA"], as_index=False)["Km Rodados"]
+        .sum()
+        .sort_values(["Mes", "Rota", "PLACA"])
+    )
+    return grouped.to_dict("records"), errors
 
 
 def _sheet_text(row: pd.Series, column: str | None, *, upper: bool = False) -> str:
@@ -7856,6 +7991,81 @@ def _render_peso_import_summary(preview: pd.DataFrame) -> None:
     st.markdown(f"""<div class="table-counter-grid">{''.join(cards)}</div>""", unsafe_allow_html=True)
 
 
+def _render_peso_workbook_downloads() -> None:
+    try:
+        deliveries = backend.load_peso()
+        route_km = backend.load_rodagem_rota()
+    except Exception as exc:
+        deliveries = pd.DataFrame()
+        route_km = pd.DataFrame()
+        st.warning("Nao foi possivel carregar todos os dados para exportacao.")
+        st.caption(clean_text(exc))
+
+    month_frames = [
+        frame[["Mes"]]
+        for frame in (deliveries, route_km)
+        if frame is not None and not frame.empty and "Mes" in frame.columns
+    ]
+    month_source = pd.concat(month_frames, ignore_index=True) if month_frames else pd.DataFrame(columns=["Mes"])
+    month_options = _sheet_export_month_options(month_source)
+    selected_month = None
+    if month_options:
+        current_month = date.today().strftime("%Y-%m")
+        default_index = month_options.index(current_month) if current_month in month_options else 0
+        selected_month = st.selectbox(
+            "Mes para exportar",
+            month_options,
+            index=default_index,
+            format_func=month_filter_label,
+            key="cad_peso_sheet_export_month",
+        )
+        if not deliveries.empty and "Mes" in deliveries.columns:
+            deliveries = deliveries.loc[deliveries["Mes"].astype("string").eq(selected_month)].copy()
+        if not route_km.empty and "Mes" in route_km.columns:
+            route_km = route_km.loc[route_km["Mes"].astype("string").eq(selected_month)].copy()
+
+    deliveries_frame = _sheet_export_frame(
+        deliveries,
+        [("Data", "DATA"), ("Cidade", "CIDADE"), ("Rota", "ROTA"), ("Peso", "PESO"), ("Valor", "VALOR"), ("PLACA", "PLACA")],
+    )
+    route_frame = _sheet_export_frame(
+        route_km,
+        [("Km Rodados", "KM"), ("Mes", "MÊS"), ("Rota", "ROTA"), ("PLACA", "PLACA")],
+    )
+    example_deliveries = pd.DataFrame(
+        [{"DATA": date.today(), "CIDADE": "SAO PAULO", "ROTA": "ROTA EXEMPLO", "PESO": 1250.5, "VALOR": 180.0, "PLACA": "ABC1D23"}]
+    )
+    example_route = pd.DataFrame(
+        [{"KM": 1000.0, "MÊS": month_filter_label(date.today().strftime("%Y-%m")), "ROTA": "ROTA EXEMPLO", "PLACA": "ABC1D23"}]
+    )
+    data_name = f"peso_dados_{selected_month}.xlsx" if selected_month else "peso_dados.xlsx"
+    columns = st.columns(2)
+    with columns[0]:
+        st.download_button(
+            "Baixar planilha com dados",
+            data=lambda: _peso_workbook_bytes(deliveries_frame, route_frame),
+            file_name=data_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="cad_peso_sheet_download_data",
+            on_click="ignore",
+            width="stretch",
+        )
+    with columns[1]:
+        st.download_button(
+            "Baixar planilha de exemplo",
+            data=lambda: _peso_workbook_bytes(example_deliveries, example_route),
+            file_name="peso_exemplo.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="cad_peso_sheet_download_example",
+            on_click="ignore",
+            width="stretch",
+        )
+    st.caption(
+        f"Arquivo com {len(deliveries_frame)} entrega(s) e {len(route_frame)} rodagem(ns) por rota. "
+        "Use as abas ENTREGAS e RODAGEM POR ROTA."
+    )
+
+
 @st.fragment
 def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
     last_rows = st.session_state.get("cad_peso_last_import_rows") or []
@@ -7872,33 +8082,36 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
                 st.rerun()
 
     with st.expander("Adicionar peso por planilha", expanded=False):
-        _render_sheet_downloads(
-            backend.load_peso,
-            [("Data", "DATA"), ("Cidade", "CIDADE"), ("Rota", "ROTA"), ("Peso", "PESO"), ("Valor", "VALOR"), ("PLACA", "PLACA")],
-            {
-                "DATA": date.today(),
-                "CIDADE": "SAO PAULO",
-                "ROTA": "ROTA EXEMPLO",
-                "PESO": 1250.5,
-                "VALOR": 180.0,
-                "PLACA": "ABC1D23",
-            },
-            key_prefix="cad_peso_sheet",
-            file_prefix="peso",
-            sheet_name="Peso",
-        )
+        _render_peso_workbook_downloads()
         uploaded = st.file_uploader("Enviar planilha", type=["xlsx", "csv"], key="cad_peso_upload")
         if uploaded is None:
             return
 
         try:
-            raw_df = _read_uploaded_sheet(uploaded, PESO_SHEET_ALIASES)
+            raw_df = _read_uploaded_sheet(
+                uploaded,
+                PESO_SHEET_ALIASES,
+                sheet_names=["ENTREGAS", "PESO"],
+            )
+            uploaded_name = clean_text(getattr(uploaded, "name", "")).lower()
+            route_raw_df = (
+                pd.DataFrame()
+                if uploaded_name.endswith(".csv")
+                else _read_uploaded_sheet(
+                    uploaded,
+                    RODAGEM_ROTA_SHEET_ALIASES,
+                    sheet_names=["RODAGEM POR ROTA"],
+                    fallback_to_active=False,
+                )
+            )
         except Exception as exc:
             st.error("Nao foi possivel ler a planilha. Envie um arquivo .xlsx ou .csv.")
             st.exception(exc)
             return
 
         rows, errors = _peso_rows_from_sheet(raw_df, plate_map)
+        route_rows, route_errors = _rodagem_rota_rows_from_sheet(route_raw_df)
+        errors.extend(route_errors)
         if errors:
             st.warning("Revise a planilha antes de importar.")
             for error in errors[:8]:
@@ -7906,17 +8119,34 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
             if len(errors) > 8:
                 st.write(f"...mais {len(errors) - 8} erro(s).")
             return
-        if not rows:
+        if not rows and not route_rows:
             st.warning("Nenhuma linha valida encontrada na planilha.")
             return
 
-        preview = pd.DataFrame(rows)
-        st.dataframe(preview[["Data", "Mes", "Cidade", "Rota", "PLACA", "Peso", "Valor", "Categoria"]], width="stretch", hide_index=True)
-        _render_peso_import_summary(preview)
-        if st.button(f"Importar {len(rows)} entrega(s)", type="primary", width="stretch", key="cad_peso_import_sheet"):
+        if rows:
+            preview = pd.DataFrame(rows)
+            st.markdown("**Entregas**")
+            st.dataframe(preview[["Data", "Mes", "Cidade", "Rota", "PLACA", "Peso", "Valor", "Categoria"]], width="stretch", hide_index=True)
+            _render_peso_import_summary(preview)
+        if route_rows:
+            st.markdown("**Rodagem por rota**")
+            st.dataframe(pd.DataFrame(route_rows), width="stretch", hide_index=True)
+            st.caption(
+                "Combinações repetidas de Mês + Rota + Placa foram somadas. "
+                "Ao importar novamente, o valor cadastrado para a mesma combinação será substituído."
+            )
+        button_label = f"Importar {len(rows)} entrega(s) e {len(route_rows)} rodagem(ns)"
+        if st.button(button_label, type="primary", width="stretch", key="cad_peso_import_sheet"):
             imported_rows: list[dict] = []
             try:
-                imported_rows = _append_records_in_batches("peso", rows, batch_size=100)
+                if rows:
+                    imported_rows = _append_records_in_batches("peso", rows, batch_size=100)
+                if route_rows:
+                    backend.upsert_dashboard_records(
+                        "rodagem_rota",
+                        route_rows,
+                        replace_keys=["Mes", "Rota", "PLACA"],
+                    )
             except Exception as exc:
                 if imported_rows:
                     st.session_state["cad_peso_last_import_rows"] = imported_rows
@@ -7926,10 +8156,16 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
                     st.error("Nao foi possivel importar a planilha para o Neon.")
                 st.exception(exc)
                 return
-            st.session_state["cad_peso_last_import_rows"] = imported_rows
-            st.session_state["cad_peso_last_import_count"] = len(imported_rows)
+            if imported_rows:
+                st.session_state["cad_peso_last_import_rows"] = imported_rows
+                st.session_state["cad_peso_last_import_count"] = len(imported_rows)
             _reset_dataset_editor("cad_peso_table")
-            st.success(f"{len(imported_rows)} entrega(s) importada(s).")
+            _reset_dataset_editor("cad_rodagem_rota_table")
+            clear_cached_reads()
+            st.success(
+                f"{len(imported_rows)} entrega(s) importada(s) e "
+                f"{len(route_rows)} rodagem(ns) por rota salva(s)."
+            )
             st.rerun()
 
 
@@ -8090,6 +8326,117 @@ def _render_peso_route_import() -> None:
                 else f"{updated} registro(s) de peso atualizado(s). Os demais dados foram preservados."
             )
             st.rerun()
+
+
+def _render_rodagem_rota_management(plate_map: dict[str, str]) -> None:
+    with st.expander("Rodagem mensal em KM por rota", expanded=False):
+        st.info(
+            "Informe quanto cada placa rodou em uma rota no mês. O combustível da rota será calculado "
+            "pelo custo mensal de combustível por KM da placa multiplicado por esta rodagem."
+        )
+        with st.form("form_rodagem_rota", clear_on_submit=True):
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                month_date = st.date_input(
+                    "Mês de referência",
+                    value=date.today().replace(day=1),
+                    key="cad_rodagem_rota_mes",
+                )
+            with c2:
+                rota = st.text_input("Rota", key="cad_rodagem_rota_rota").strip().upper()
+            with c3:
+                placa = st.selectbox(
+                    "Placa",
+                    list(plate_map),
+                    index=None,
+                    placeholder="Selecione uma placa",
+                    key="cad_rodagem_rota_placa",
+                )
+            with c4:
+                km_rota = st.number_input(
+                    "KM rodados na rota",
+                    min_value=0.01,
+                    step=10.0,
+                    format="%.2f",
+                    key="cad_rodagem_rota_km",
+                )
+                submitted = st.form_submit_button("Salvar rodagem", type="primary", width="stretch")
+            if submitted:
+                _save_entry(
+                    "rodagem_rota",
+                    {
+                        "Mes": _entry_month(month_date),
+                        "Rota": rota,
+                        "PLACA": placa,
+                        "Km Rodados": km_rota,
+                    },
+                    required=["Mes", "Rota", "PLACA", "Km Rodados"],
+                    replace_keys=["Mes", "Rota", "PLACA"],
+                    reset_table_key="cad_rodagem_rota_table",
+                    success="Rodagem mensal da rota salva.",
+                )
+
+        uploaded = st.file_uploader(
+            "Importar somente rodagem por rota",
+            type=["xlsx", "csv"],
+            key="cad_rodagem_rota_upload",
+        )
+        if uploaded is not None:
+            try:
+                raw_df = _read_uploaded_sheet(
+                    uploaded,
+                    RODAGEM_ROTA_SHEET_ALIASES,
+                    sheet_names=["RODAGEM POR ROTA"],
+                )
+                route_rows, errors = _rodagem_rota_rows_from_sheet(raw_df)
+            except Exception as exc:
+                st.error("Nao foi possivel ler a rodagem por rota.")
+                st.exception(exc)
+                route_rows, errors = [], []
+            if errors:
+                st.warning("Revise a planilha antes de importar.")
+                for error in errors[:8]:
+                    st.write(error)
+                if len(errors) > 8:
+                    st.write(f"...mais {len(errors) - 8} erro(s).")
+            elif route_rows:
+                st.dataframe(pd.DataFrame(route_rows), width="stretch", hide_index=True)
+                if st.button(
+                    f"Importar {len(route_rows)} rodagem(ns)",
+                    type="primary",
+                    width="stretch",
+                    key="cad_rodagem_rota_import",
+                ):
+                    try:
+                        backend.upsert_dashboard_records(
+                            "rodagem_rota",
+                            route_rows,
+                            replace_keys=["Mes", "Rota", "PLACA"],
+                        )
+                    except Exception as exc:
+                        st.error("Nao foi possivel salvar a rodagem por rota no Neon.")
+                        st.exception(exc)
+                    else:
+                        _reset_dataset_editor("cad_rodagem_rota_table")
+                        clear_cached_reads()
+                        st.success(f"{len(route_rows)} rodagem(ns) por rota salva(s).")
+                        st.rerun()
+
+    st.markdown("#### Rodagem por rota cadastrada")
+    _render_dataset_editor(
+        "rodagem_rota",
+        backend.load_rodagem_rota,
+        ["Mes", "Rota", "PLACA", "Km Rodados"],
+        ["Mes", "Rota", "PLACA", "Km Rodados"],
+        "cad_rodagem_rota_table",
+        {
+            "Mes": st.column_config.TextColumn("Mês"),
+            "Rota": st.column_config.TextColumn("Rota"),
+            "PLACA": st.column_config.TextColumn("Placa"),
+            "Km Rodados": _number_col("KM rodados", step=1.0, format="%.2f"),
+        },
+        ["Mes", "Rota", "PLACA"],
+    )
 
 
 def _clear_combustivel_last_import() -> None:
@@ -9201,6 +9548,7 @@ def render_cadastro() -> None:
         if active_tab == "Peso":
             _render_peso_sheet_import(plate_map)
             _render_peso_route_import()
+            _render_rodagem_rota_management(plate_map)
             _render_peso_month_reset()
 
             with st.form("form_peso", clear_on_submit=True):
