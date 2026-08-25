@@ -3805,6 +3805,7 @@ def data_frota(params: dict | None = None) -> dict:
     df_peso_transport_selected = _ranking_filter_categories(df_peso, ["Transporte"])
     dominancia_peso = _ranking_weight_dominance_by_route(df_peso_dominancia, placas)
     route_days_map = _ranking_active_days_by_plate(df_peso) if rotas else {}
+    service_days_map = _ranking_active_days_by_plate(df_peso)
 
     categorias = set()
     for df_src in source_frames:
@@ -3925,6 +3926,7 @@ def data_frota(params: dict | None = None) -> dict:
         valor_peso_total = valor_peso_map.get(placa, 0.0)
         diaria = daily_rates.get(placa, 0.0) if _normalize_category_value(categoria) == "Freteiro" else 0.0
         dias_trabalhados = dias_trabalhados_map.get(placa, 0)
+        dias_servico = service_days_map.get(placa, 0)
         gasto_diarias = gasto_diarias_map.get(placa, 0.0)
         salario_transporte = salario_transporte_map.get(placa, 0.0)
         total = combustivel_total + manutencao_total + pedagio_total + gasto_diarias + salario_transporte
@@ -3943,6 +3945,7 @@ def data_frota(params: dict | None = None) -> dict:
                 "pedagio": round(pedagio_total, 2),
                 "diaria": round(diaria, 2),
                 "dias_trabalhados": dias_trabalhados,
+                "dias_servico": dias_servico,
                 "gasto_diarias": round(gasto_diarias, 2),
                 "salario_transporte": round(salario_transporte, 2),
                 "peso_total": round(peso_total, 3),
@@ -3968,6 +3971,7 @@ def data_frota(params: dict | None = None) -> dict:
         "diarias": "gasto_diarias",
         "peso": "peso_total",
         "valor_entregas": "valor_peso",
+        "dias_servico": "dias_servico",
     }
     sort_selection = ordenar_por if ordenar_por in sort_keys else "combustivel"
     sort_key = sort_keys[sort_selection]
@@ -3995,6 +3999,7 @@ def data_frota(params: dict | None = None) -> dict:
         else 0.0
     )
     total_entregas = int(len(df_peso_total))
+    total_dias_servico = sum(row["dias_servico"] for row in ranking)
     peso_sem_rota = (
         float(
             pd.to_numeric(
@@ -4047,6 +4052,7 @@ def data_frota(params: dict | None = None) -> dict:
             "peso_total_filtrado": round(total_peso_filtrado, 3),
             "peso_sem_rota": round(peso_sem_rota, 3),
             "entregas": total_entregas,
+            "dias_servico": total_dias_servico,
             "valor_peso": round(sum(row["valor_peso"] for row in ranking), 2),
             "km_total": round(total_km, 2),
             "litros_total": round(total_litros, 2),
