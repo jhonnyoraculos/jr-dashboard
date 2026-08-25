@@ -40,7 +40,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-rodagem-mensal-por-rota-v1"
+APP_VERSION = "deploy-dias-de-servico-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 DATA_EDITOR_ALL_PAGES = "__todos_os_registros__"
@@ -155,6 +155,7 @@ RANK_ORDER_OPTIONS = {
     "diarias": "Diárias",
     "peso": "Peso",
     "valor_entregas": "Valor entregas",
+    "dias_servico": "Dias de serviço",
 }
 
 
@@ -5654,6 +5655,7 @@ def render_frota() -> None:
     summary_kpis = [
         ("Placas no ranking", fmt_num(totais.get("placas")), JR_BLUE),
         ("Número de entregas", fmt_num(totais.get("entregas")), JR_BLUE),
+        ("Dias de serviço", fmt_num(totais.get("dias_servico")), JR_BLUE),
         ("Custo sobre o ganho das entregas", fmt_percent(cost_percentage), "#D97706"),
         ("Ganho das entregas", fmt_brl_big(totais.get("valor_peso")), "#15803D"),
         (weight_label, fmt_peso(totais.get("peso_total")), JR_BLUE),
