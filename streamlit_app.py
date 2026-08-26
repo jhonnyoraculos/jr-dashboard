@@ -44,7 +44,8 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-importacao-peso-atomica-v1"
+APP_VERSION = "deploy-rotas-desativadas-v1"
+RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 DATA_EDITOR_ALL_PAGES = "__todos_os_registros__"
@@ -5010,10 +5011,14 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
         if not isinstance(current_routes, list):
             current_routes = [current_routes] if current_routes else []
         current_routes = [item for item in current_routes if item in route_options_base]
+        if not RANK_ROUTES_ENABLED:
+            current_routes = []
         if route_state_exists and st.session_state.get(route_key) != current_routes:
             st.session_state[route_key] = current_routes
         route_button_label = (
-            "Rota (Todos)"
+            "Rotas desativadas"
+            if not RANK_ROUTES_ENABLED
+            else "Rota (Todos)"
             if not current_routes
             else str(current_routes[0])
             if len(current_routes) == 1
@@ -5023,7 +5028,12 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
             with st.popover(
                 route_button_label,
                 key="rank_route_popover",
-                help="Escolha uma ou mais rotas. Sem seleção, são usados os totais gerais do período.",
+                help=(
+                    "O filtro de rotas está temporariamente desativado."
+                    if not RANK_ROUTES_ENABLED
+                    else "Escolha uma ou mais rotas. Sem seleção, são usados os totais gerais do período."
+                ),
+                disabled=not RANK_ROUTES_ENABLED,
                 use_container_width=True,
             ):
                 route_order = st.selectbox(
@@ -5098,7 +5108,11 @@ def frota_filter_controls(seed: dict) -> dict[str, object]:
                             st.error("\n\n".join(critical_lines), icon="🚨")
                         if warning_lines:
                             st.warning("\n\n".join(warning_lines), icon="⚠️")
-        route_param = [str(item) for item in routes_selected] if routes_selected else ["Todos"]
+        route_param = (
+            [str(item) for item in routes_selected]
+            if RANK_ROUTES_ENABLED and routes_selected
+            else ["Todos"]
+        )
 
         plate_seed = (
             route_seed
