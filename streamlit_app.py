@@ -29,7 +29,11 @@ import app as backend
 # ao deploy. Recarregue-o quando a tela nova depender da rodagem por rota.
 if not all(
     hasattr(backend, feature)
-    for feature in ("load_rodagem_rota", "upsert_dashboard_records")
+    for feature in (
+        "load_rodagem_rota",
+        "upsert_dashboard_records",
+        "append_missing_dashboard_records",
+    )
 ):
     backend = importlib.reload(backend)
 
@@ -40,7 +44,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-dias-de-servico-v1"
+APP_VERSION = "deploy-importacao-peso-atomica-v1"
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
 DATA_EDITOR_ALL_PAGES = "__todos_os_registros__"
@@ -8150,22 +8154,26 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
         button_label = f"Importar {len(rows)} entrega(s) e {len(route_rows)} rodagem(ns)"
         if st.button(button_label, type="primary", width="stretch", key="cad_peso_import_sheet"):
             imported_rows: list[dict] = []
+            skipped_rows = 0
             try:
-                if rows:
-                    imported_rows = _append_records_in_batches("peso", rows, batch_size=100)
-                if route_rows:
-                    backend.upsert_dashboard_records(
-                        "rodagem_rota",
-                        route_rows,
-                        replace_keys=["Mes", "Rota", "PLACA"],
-                    )
+                with st.spinner("Conferindo os registros existentes e salvando a planilha completa..."):
+                    if rows:
+                        imported_rows, skipped_rows = backend.append_missing_dashboard_records(
+                            "peso",
+                            rows,
+                            update_plate_registry=False,
+                        )
+                    if route_rows:
+                        backend.upsert_dashboard_records(
+                            "rodagem_rota",
+                            route_rows,
+                            replace_keys=["Mes", "Rota", "PLACA"],
+                        )
             except Exception as exc:
-                if imported_rows:
-                    st.session_state["cad_peso_last_import_rows"] = imported_rows
-                    st.session_state["cad_peso_last_import_count"] = len(imported_rows)
-                    st.error(f"O envio parou depois de {len(imported_rows)} entrega(s). Voce pode apagar essa importacao parcial pelo botao acima.")
-                else:
-                    st.error("Nao foi possivel importar a planilha para o Neon.")
+                st.error(
+                    "A importacao foi cancelada sem salvar um lote incompleto. "
+                    "Tente novamente; os registros ja existentes nao serao duplicados."
+                )
                 st.exception(exc)
                 return
             if imported_rows:
@@ -8175,7 +8183,8 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
             _reset_dataset_editor("cad_rodagem_rota_table")
             clear_cached_reads()
             st.success(
-                f"{len(imported_rows)} entrega(s) importada(s) e "
+                f"{len(imported_rows)} entrega(s) nova(s) importada(s), "
+                f"{skipped_rows} ja existente(s) mantida(s) e "
                 f"{len(route_rows)} rodagem(ns) por rota salva(s)."
             )
             st.rerun()

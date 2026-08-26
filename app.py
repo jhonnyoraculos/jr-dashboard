@@ -7,7 +7,7 @@ import re
 import threading
 import time
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -735,6 +735,133 @@ def append_dashboard_records(dataset: str, rows: list[dict], *, update_plate_reg
     for registry_dataset in text_registry_changed:
         _clear_dataset_cache(registry_dataset)
     return version
+
+
+def _import_record_key(columns: list[str], row: dict) -> tuple:
+    """Cria uma chave estavel para comparar registros da planilha com o Neon."""
+    key = []
+    for column in columns:
+        value = _normalize_insert_value(row.get(column))
+        if value is None:
+            key.append(None)
+            continue
+        if column == "Data":
+            parsed = pd.to_datetime(value, errors="coerce")
+            key.append(parsed.date().isoformat() if pd.notna(parsed) else str(value).strip())
+            continue
+        if _COLUMN_SQL_TYPES.get(column) == "DOUBLE PRECISION":
+            numeric = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+            key.append(round(float(numeric), 6) if pd.notna(numeric) else None)
+            continue
+        key.append(str(value).strip() if isinstance(value, str) else value)
+    return tuple(key)
+
+
+def append_missing_dashboard_records(
+    dataset: str,
+    rows: list[dict],
+    *,
+    update_plate_registry: bool = True,
+) -> tuple[list[dict], int]:
+    """Insere somente o que falta, em uma unica transacao atomica."""
+    if dataset not in DB_TABLES or dataset not in _DATASET_COLUMNS:
+        raise ValueError(f"Dataset invalido: {dataset}")
+
+    from sqlalchemy import text
+
+    columns = _DATASET_COLUMNS[dataset]
+    prepared_rows = []
+    for row in rows:
+        prepared = _prepare_insert_row(dataset, row)
+        if any(prepared.get(column) is not None for column in columns):
+            prepared_rows.append(prepared)
+    if not prepared_rows:
+        raise ValueError("Nenhum dado valido para salvar.")
+
+    table = _quote_identifier(DB_TABLES[dataset])
+    quoted_columns = ", ".join(_quote_identifier(column) for column in columns)
+    version = datetime.now(timezone.utc).isoformat()
+    inserted_rows: list[dict] = []
+    skipped = 0
+
+    with _db_engine().begin() as conn:
+        _ensure_dataset_table(conn, dataset)
+        conn.execute(text(f"LOCK TABLE {table} IN SHARE ROW EXCLUSIVE MODE"))
+        months = sorted(
+            {
+                str(row.get("Mes") or "").strip()
+                for row in prepared_rows
+                if str(row.get("Mes") or "").strip()
+            }
+        )
+        select_sql = f"SELECT {quoted_columns} FROM {table}"
+        select_params = {}
+        if "Mes" in columns and months:
+            month_refs = []
+            for index, month in enumerate(months):
+                name = f"month_{index}"
+                month_refs.append(f":{name}")
+                select_params[name] = month
+            select_sql += f' WHERE "Mes" IN ({", ".join(month_refs)})'
+        existing = conn.execute(text(select_sql), select_params).mappings().all()
+        existing_counts = Counter(
+            _import_record_key(columns, dict(row))
+            for row in existing
+        )
+
+        for prepared in prepared_rows:
+            key = _import_record_key(columns, prepared)
+            if existing_counts[key] > 0:
+                existing_counts[key] -= 1
+                skipped += 1
+            else:
+                inserted_rows.append(prepared)
+
+        if inserted_rows:
+            parameter_names = {column: f"value_{index}" for index, column in enumerate(columns)}
+            value_sql = ", ".join(f":{parameter_names[column]}" for column in columns)
+            insert_params = [
+                {parameter_names[column]: row.get(column) for column in columns}
+                for row in inserted_rows
+            ]
+            conn.execute(
+                text(f"INSERT INTO {table} ({quoted_columns}) VALUES ({value_sql})"),
+                insert_params,
+            )
+
+            if update_plate_registry and dataset in {"combustivel", "manutencao", "pneus", "pedagio", "peso"}:
+                plate_categories = {
+                    str(row["PLACA"]): str(row["Categoria"])
+                    for row in inserted_rows
+                    if row.get("PLACA") and row.get("Categoria")
+                }
+                if plate_categories:
+                    _ensure_dataset_table(conn, "placas")
+                    placas_table = _quote_identifier(DB_TABLES["placas"])
+                    conn.execute(
+                        text(
+                            f"""
+                            INSERT INTO {placas_table} ("PLACA", "Categoria")
+                            VALUES (:placa, :categoria)
+                            ON CONFLICT ("PLACA")
+                            DO UPDATE SET "Categoria" = EXCLUDED."Categoria"
+                            """
+                        ),
+                        [
+                            {"placa": plate, "categoria": category}
+                            for plate, category in plate_categories.items()
+                        ],
+                    )
+                    _write_metadata(conn, "placas.version", version)
+
+            _write_metadata(conn, f"{dataset}.version", version)
+            _write_metadata(conn, "import.version", version)
+
+    if inserted_rows:
+        if update_plate_registry and dataset in {"combustivel", "manutencao", "pneus", "pedagio", "peso"}:
+            _clear_dataset_cache("placas")
+        _clear_dataset_cache(dataset)
+    return inserted_rows, skipped
 
 
 def upsert_dashboard_records(dataset: str, rows: list[dict], *, replace_keys: list[str]) -> str:
