@@ -44,7 +44,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-rotas-desativadas-v1"
+APP_VERSION = "deploy-importacoes-atomicas-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -7950,21 +7950,32 @@ def _render_hoteis_sheet_import() -> None:
         st.dataframe(preview[["Data", "Mes", "Cidade", "Hotel", "Motorista", "Ajudante", "Valor"]], width="stretch", hide_index=True)
         if st.button(f"Importar {len(rows)} hospedagem(ns)", type="primary", width="stretch", key="cad_hotel_import_sheet"):
             imported_rows: list[dict] = []
+            skipped_rows = 0
             try:
-                imported_rows = _append_records_in_batches("hoteis", rows, batch_size=100)
+                with st.spinner("Conferindo os registros existentes e salvando a planilha completa..."):
+                    imported_rows, skipped_rows = backend.append_missing_dashboard_records(
+                        "hoteis",
+                        rows,
+                        update_plate_registry=False,
+                    )
             except Exception as exc:
-                if imported_rows:
-                    st.session_state["cad_hotel_last_import_rows"] = imported_rows
-                    st.session_state["cad_hotel_last_import_count"] = len(imported_rows)
-                    st.error(f"O envio parou depois de {len(imported_rows)} hospedagem(ns). Voce pode apagar essa importacao parcial pelo botao acima.")
-                else:
-                    st.error("Nao foi possivel importar a planilha para o Neon.")
+                st.error(
+                    "A importacao foi cancelada sem salvar um lote incompleto. "
+                    "Tente novamente; os registros ja existentes nao serao duplicados."
+                )
                 st.exception(exc)
                 return
-            st.session_state["cad_hotel_last_import_rows"] = imported_rows
-            st.session_state["cad_hotel_last_import_count"] = len(imported_rows)
+            if imported_rows:
+                st.session_state["cad_hotel_last_import_rows"] = imported_rows
+                st.session_state["cad_hotel_last_import_count"] = len(imported_rows)
+            else:
+                _clear_hoteis_last_import()
             _reset_dataset_editor("cad_hotel_table")
-            st.success(f"{len(imported_rows)} hospedagem(ns) importada(s).")
+            clear_cached_reads()
+            st.success(
+                f"{len(imported_rows)} hospedagem(ns) nova(s) importada(s) e "
+                f"{skipped_rows} ja existente(s) mantida(s)."
+            )
             st.rerun()
 
 
@@ -8193,6 +8204,8 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
             if imported_rows:
                 st.session_state["cad_peso_last_import_rows"] = imported_rows
                 st.session_state["cad_peso_last_import_count"] = len(imported_rows)
+            else:
+                _clear_peso_last_import()
             _reset_dataset_editor("cad_peso_table")
             _reset_dataset_editor("cad_rodagem_rota_table")
             clear_cached_reads()
@@ -8345,9 +8358,10 @@ def _render_peso_route_import() -> None:
             key="cad_peso_route_import_confirm",
         ):
             try:
-                updated = backend.update_peso_routes(rows)
+                with st.spinner("Conferindo os registros e salvando todas as rotas..."):
+                    updated = backend.update_peso_routes(rows)
             except Exception as exc:
-                st.error("Nao foi possivel atualizar as rotas no Neon. Nenhum dado foi apagado.")
+                st.error("A importacao foi cancelada sem deixar uma atualizacao parcial de rotas.")
                 st.warning(clean_text(exc))
                 return
             _reset_dataset_editor("cad_peso_table")
@@ -8443,13 +8457,14 @@ def _render_rodagem_rota_management(plate_map: dict[str, str]) -> None:
                     key="cad_rodagem_rota_import",
                 ):
                     try:
-                        backend.upsert_dashboard_records(
-                            "rodagem_rota",
-                            route_rows,
-                            replace_keys=["Mes", "Rota", "PLACA"],
-                        )
+                        with st.spinner("Salvando toda a planilha de rodagem..."):
+                            backend.upsert_dashboard_records(
+                                "rodagem_rota",
+                                route_rows,
+                                replace_keys=["Mes", "Rota", "PLACA"],
+                            )
                     except Exception as exc:
-                        st.error("Nao foi possivel salvar a rodagem por rota no Neon.")
+                        st.error("A importacao foi cancelada sem deixar uma rodagem parcial.")
                         st.exception(exc)
                     else:
                         _reset_dataset_editor("cad_rodagem_rota_table")
@@ -8562,16 +8577,33 @@ def _render_combustivel_sheet_import(plate_map: dict[str, str]) -> None:
         st.success(f"{len(rows)} lancamento(s) prontos para importar.")
         st.dataframe(preview[["Data", "Mes", "PLACA", "Combustivel", "POSTOS", "Litros", "Custo", "Categoria"]], width="stretch", hide_index=True)
         if st.button("Importar combustivel", type="primary", width="stretch", key="cad_comb_import_confirm"):
+            imported_rows: list[dict] = []
+            skipped_rows = 0
             try:
-                imported_rows = _append_records_in_batches("combustivel", rows, batch_size=100)
+                with st.spinner("Conferindo os registros existentes e salvando a planilha completa..."):
+                    imported_rows, skipped_rows = backend.append_missing_dashboard_records(
+                        "combustivel",
+                        rows,
+                        update_plate_registry=False,
+                    )
             except Exception as exc:
-                st.error("Nao foi possivel salvar no Neon.")
+                st.error(
+                    "A importacao foi cancelada sem salvar um lote incompleto. "
+                    "Tente novamente; os registros ja existentes nao serao duplicados."
+                )
                 st.exception(exc)
                 return
-            st.session_state["cad_comb_last_import_rows"] = imported_rows
-            st.session_state["cad_comb_last_import_count"] = len(imported_rows)
+            if imported_rows:
+                st.session_state["cad_comb_last_import_rows"] = imported_rows
+                st.session_state["cad_comb_last_import_count"] = len(imported_rows)
+            else:
+                _clear_combustivel_last_import()
             _reset_dataset_editor("cad_comb_table")
-            st.success(f"{len(imported_rows)} lancamentos importados.")
+            clear_cached_reads()
+            st.success(
+                f"{len(imported_rows)} lancamento(s) novo(s) importado(s) e "
+                f"{skipped_rows} ja existente(s) mantido(s)."
+            )
             st.rerun()
 
 
@@ -8661,49 +8693,6 @@ def _undo_pedagio_last_import() -> None:
     st.rerun()
 
 
-def _append_records_in_batches(dataset: str, rows: list[dict], *, batch_size: int = 100) -> list[dict]:
-    imported: list[dict] = []
-    total = len(rows)
-    progress = st.progress(0, text="Preparando envio...")
-    status = st.empty()
-
-    for start in range(0, total, batch_size):
-        batch = rows[start : start + batch_size]
-        batch_number = (start // batch_size) + 1
-        batch_total = (total + batch_size - 1) // batch_size
-        status.info(f"Enviando lote {batch_number}/{batch_total} ({start + 1}-{min(start + len(batch), total)} de {total})...")
-        backend.append_dashboard_records(dataset, batch, update_plate_registry=False)
-        imported.extend(batch)
-        progress.progress(min(len(imported) / total, 1.0), text=f"{len(imported)} de {total} lancamentos enviados")
-
-    status.empty()
-    progress.empty()
-    clear_cached_reads()
-    return imported
-
-
-def _save_records_with_replace_in_batches(dataset: str, rows: list[dict], replace_keys: list[str], *, batch_size: int = 100) -> list[dict]:
-    imported: list[dict] = []
-    total = len(rows)
-    progress = st.progress(0, text="Preparando envio...")
-    status = st.empty()
-
-    for start in range(0, total, batch_size):
-        batch = rows[start : start + batch_size]
-        batch_number = (start // batch_size) + 1
-        batch_total = (total + batch_size - 1) // batch_size
-        status.info(f"Enviando lote {batch_number}/{batch_total} ({start + 1}-{min(start + len(batch), total)} de {total})...")
-        for row in batch:
-            backend.save_dashboard_record(dataset, row, replace_keys=replace_keys)
-        imported.extend(batch)
-        progress.progress(min(len(imported) / total, 1.0), text=f"{len(imported)} de {total} registros enviados")
-
-    status.empty()
-    progress.empty()
-    clear_cached_reads()
-    return imported
-
-
 @st.fragment
 def _render_km_sheet_import() -> None:
     with st.expander("Adicionar KM mensal por planilha", expanded=False):
@@ -8743,17 +8732,38 @@ def _render_km_sheet_import() -> None:
         st.success(f"{len(rows)} registro(s) prontos para importar.")
         st.dataframe(preview[["Mes", "PLACA", "Km Rodados"]], width="stretch", hide_index=True)
         if st.button("Importar KM mensal", type="primary", width="stretch", key="cad_km_import_confirm"):
+            skipped_rows = 0
             try:
-                if substituir:
-                    imported_rows = _save_records_with_replace_in_batches("combustivel_km", rows, ["Mes", "PLACA"], batch_size=100)
-                else:
-                    imported_rows = _append_records_in_batches("combustivel_km", rows, batch_size=100)
+                with st.spinner("Conferindo os registros existentes e salvando a planilha completa..."):
+                    if substituir:
+                        backend.upsert_dashboard_records(
+                            "combustivel_km",
+                            rows,
+                            replace_keys=["Mes", "PLACA"],
+                        )
+                        imported_rows = rows
+                    else:
+                        imported_rows, skipped_rows = backend.append_missing_dashboard_records(
+                            "combustivel_km",
+                            rows,
+                            update_plate_registry=False,
+                        )
             except Exception as exc:
-                st.error("Nao foi possivel salvar no Neon.")
+                st.error(
+                    "A importacao foi cancelada sem salvar um lote incompleto. "
+                    "Tente novamente; os registros ja existentes nao serao duplicados."
+                )
                 st.exception(exc)
                 return
             _reset_dataset_editor("cad_km_table")
-            st.success(f"{len(imported_rows)} registro(s) de KM importado(s).")
+            clear_cached_reads()
+            if substituir:
+                st.success(f"{len(imported_rows)} registro(s) de KM salvo(s) ou substituido(s).")
+            else:
+                st.success(
+                    f"{len(imported_rows)} registro(s) de KM novo(s) importado(s) e "
+                    f"{skipped_rows} ja existente(s) mantido(s)."
+                )
             st.rerun()
 
 
@@ -8814,21 +8824,32 @@ def _render_pedagio_sheet_import(plate_map: dict[str, str]) -> None:
         st.dataframe(preview[["Mes", "PLACA", "Categoria", "Tipo", "Custo"]], width="stretch", hide_index=True)
         if st.button(f"Importar {len(rows)} lancamentos", type="primary", width="stretch", key="cad_ped_import_sheet"):
             imported_rows: list[dict] = []
+            skipped_rows = 0
             try:
-                imported_rows = _append_records_in_batches("pedagio", rows, batch_size=100)
+                with st.spinner("Conferindo os registros existentes e salvando a planilha completa..."):
+                    imported_rows, skipped_rows = backend.append_missing_dashboard_records(
+                        "pedagio",
+                        rows,
+                        update_plate_registry=False,
+                    )
             except Exception as exc:
-                if imported_rows:
-                    st.session_state["cad_ped_last_import_rows"] = imported_rows
-                    st.session_state["cad_ped_last_import_count"] = len(imported_rows)
-                    st.error(f"O envio parou depois de {len(imported_rows)} lancamento(s). Voce pode apagar essa importacao parcial pelo botao acima.")
-                else:
-                    st.error("Nao foi possivel importar a planilha para o Neon.")
+                st.error(
+                    "A importacao foi cancelada sem salvar um lote incompleto. "
+                    "Tente novamente; os registros ja existentes nao serao duplicados."
+                )
                 st.exception(exc)
                 return
-            st.session_state["cad_ped_last_import_rows"] = imported_rows
-            st.session_state["cad_ped_last_import_count"] = len(imported_rows)
+            if imported_rows:
+                st.session_state["cad_ped_last_import_rows"] = imported_rows
+                st.session_state["cad_ped_last_import_count"] = len(imported_rows)
+            else:
+                _clear_pedagio_last_import()
             _reset_dataset_editor("cad_ped_table")
-            st.success(f"{len(imported_rows)} lancamentos importados.")
+            clear_cached_reads()
+            st.success(
+                f"{len(imported_rows)} lancamento(s) novo(s) importado(s) e "
+                f"{skipped_rows} ja existente(s) mantido(s)."
+            )
             st.rerun()
 
 

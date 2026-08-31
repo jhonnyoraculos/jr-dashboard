@@ -783,6 +783,7 @@ def append_missing_dashboard_records(
     version = datetime.now(timezone.utc).isoformat()
     inserted_rows: list[dict] = []
     skipped = 0
+    text_registry_changed: set[str] = set()
 
     with _db_engine().begin() as conn:
         _ensure_dataset_table(conn, dataset)
@@ -854,6 +855,39 @@ def append_missing_dashboard_records(
                     )
                     _write_metadata(conn, "placas.version", version)
 
+            if dataset == "combustivel":
+                registry_values = {
+                    "combustiveis": {
+                        str(row["Combustivel"]).strip()
+                        for row in inserted_rows
+                        if row.get("Combustivel")
+                    },
+                    "postos": {
+                        str(row["POSTOS"]).strip()
+                        for row in inserted_rows
+                        if row.get("POSTOS")
+                    },
+                }
+                for registry_dataset, values in registry_values.items():
+                    if not values:
+                        continue
+                    column = "Combustivel" if registry_dataset == "combustiveis" else "POSTOS"
+                    text_registry_changed.add(registry_dataset)
+                    _ensure_dataset_table(conn, registry_dataset)
+                    registry_table = _quote_identifier(DB_TABLES[registry_dataset])
+                    quoted_column = _quote_identifier(column)
+                    conn.execute(
+                        text(
+                            f"""
+                            INSERT INTO {registry_table} ({quoted_column})
+                            VALUES (:value)
+                            ON CONFLICT ({quoted_column}) DO NOTHING
+                            """
+                        ),
+                        [{"value": value} for value in sorted(values)],
+                    )
+                    _write_metadata(conn, f"{registry_dataset}.version", version)
+
             _write_metadata(conn, f"{dataset}.version", version)
             _write_metadata(conn, "import.version", version)
 
@@ -861,6 +895,8 @@ def append_missing_dashboard_records(
         if update_plate_registry and dataset in {"combustivel", "manutencao", "pneus", "pedagio", "peso"}:
             _clear_dataset_cache("placas")
         _clear_dataset_cache(dataset)
+        for registry_dataset in text_registry_changed:
+            _clear_dataset_cache(registry_dataset)
     return inserted_rows, skipped
 
 
