@@ -44,7 +44,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-importacoes-atomicas-v1"
+APP_VERSION = "deploy-grafico-gasto-ganho-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -3576,6 +3576,7 @@ def multi_bar_chart(
     height: int | None = None,
     label_mode: str = "day",
     fallback_year=None,
+    include_year: bool = False,
 ) -> go.Figure:
     clean_series = [item for item in series if item.get("raw_labels")]
     series_count = len(clean_series)
@@ -3590,7 +3591,7 @@ def multi_bar_chart(
                 {"Mes": labels, "Valor": values},
                 "Mes",
                 "Valor",
-                include_year=False,
+                include_year=include_year,
                 fallback_year=fallback_year,
             )
         return bar_chart(
@@ -3660,8 +3661,8 @@ def multi_bar_chart(
 
     label_formatter = None
     if label_mode == "month":
-        ordered_labels = _ordered_month_labels(clean_series, include_year=False, fallback_year=fallback_year)
-        label_formatter = lambda raw: format_month_for_chart(raw, include_year=False, fallback_year=fallback_year)
+        ordered_labels = _ordered_month_labels(clean_series, include_year=include_year, fallback_year=fallback_year)
+        label_formatter = lambda raw: format_month_for_chart(raw, include_year=include_year, fallback_year=fallback_year)
     else:
         ordered_labels = _ordered_day_labels(clean_series)
     if not ordered_labels:
@@ -5803,6 +5804,12 @@ def render_frota() -> None:
             )
         )
 
+    show_monthly_gain = st.toggle(
+        "Comparar gasto com ganho das entregas por mês",
+        value=False,
+        key="rank_compare_monthly_gain",
+        help="Exibe gasto total e ganho das entregas lado a lado no primeiro gráfico.",
+    )
     include_year = params.get("ano") is None
     fallback_year = params.get("ano")
     total_labels, total_values = sorted_series(
@@ -5878,8 +5885,33 @@ def render_frota() -> None:
             if include_year
             else bar_chart(litros_labels, litros_values, currency=False, show_text=True)
         )
+    total_monthly_title = "Gasto total por mês"
+    if show_monthly_gain:
+        monthly_cost = data.get("mensal_total", {}) or {}
+        monthly_gain = data.get("ganho_mensal", {}) or {}
+        total_monthly_fig = multi_bar_chart(
+            [
+                {
+                    "label": "Gasto total",
+                    "color": JR_RED,
+                    "raw_labels": monthly_cost.get("Mes", []) or [],
+                    "values": monthly_cost.get("Valor", []) or [],
+                },
+                {
+                    "label": "Ganho das entregas",
+                    "color": "#15803D",
+                    "raw_labels": monthly_gain.get("Mes", []) or [],
+                    "values": monthly_gain.get("Valor", []) or [],
+                },
+            ],
+            currency=True,
+            label_mode="month",
+            fallback_year=fallback_year,
+            include_year=include_year,
+        )
+        total_monthly_title = "Gasto e ganho das entregas por mês"
     chart_items = [
-        ("Gasto total por mês", total_monthly_fig),
+        (total_monthly_title, total_monthly_fig),
         ("Peso por mês", peso_monthly_fig),
     ]
     if not freteiro_mode:
