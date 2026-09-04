@@ -44,7 +44,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-grafico-gasto-ganho-escala-unica-v1"
+APP_VERSION = "deploy-grafico-percentual-custo-ganho-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -3593,9 +3593,8 @@ def monthly_cost_gain_line_chart(
         include_year=include_year,
         fallback_year=fallback_year,
     )
-    fig = go.Figure()
-    for item in series:
-        value_map = _series_value_map(
+    value_maps = [
+        _series_value_map(
             item["raw_labels"],
             item["values"],
             label_formatter=lambda raw: format_month_for_chart(
@@ -3604,16 +3603,37 @@ def monthly_cost_gain_line_chart(
                 fallback_year=fallback_year,
             ),
         )
+        for item in series
+    ]
+    cost_values = [value_maps[0].get(label, 0.0) for label in ordered_labels]
+    gain_values = [value_maps[1].get(label, 0.0) for label in ordered_labels]
+    cost_percentages = [
+        (cost / gain * 100.0) if gain else None
+        for cost, gain in zip(cost_values, gain_values)
+    ]
+    percentage_labels = [fmt_percent(value) if value is not None else "—" for value in cost_percentages]
+    fig = go.Figure()
+    for index, (item, value_map) in enumerate(zip(series, value_maps)):
         values = [value_map.get(label, 0.0) for label in ordered_labels]
+        is_cost = index == 0
         fig.add_trace(
             go.Scatter(
                 x=ordered_labels,
                 y=values,
                 name=item["label"],
-                mode="lines+markers",
+                mode="lines+markers+text" if is_cost else "lines+markers",
                 line={"color": item["color"], "width": 3},
                 marker={"color": item["color"], "size": 7},
-                hovertemplate="<b>%{fullData.name}</b><br>%{x}<br>R$ %{y:,.2f}<extra></extra>",
+                text=percentage_labels if is_cost else None,
+                textposition="top center" if is_cost else None,
+                textfont={"color": "#D97706", "size": 11} if is_cost else None,
+                customdata=percentage_labels if is_cost else None,
+                hovertemplate=(
+                    "<b>%{fullData.name}</b><br>%{x}<br>R$ %{y:,.2f}"
+                    "<br>Custo sobre o ganho: %{customdata}<extra></extra>"
+                    if is_cost
+                    else "<b>%{fullData.name}</b><br>%{x}<br>R$ %{y:,.2f}<extra></extra>"
+                ),
             )
         )
     fig.update_xaxes(tickangle=-30, type="category")
