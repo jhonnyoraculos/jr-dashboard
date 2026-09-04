@@ -44,7 +44,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-grafico-gasto-ganho-v1"
+APP_VERSION = "deploy-grafico-gasto-ganho-linhas-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -3567,6 +3567,80 @@ def multi_line_chart(series: list[dict], *, include_year: bool = True, fallback_
     return update_figure_meta(fig, jr_compare_series_count=series_count, jr_full_width=_compare_chart_full_width(series_count))
 
 
+def monthly_cost_gain_line_chart(
+    monthly_cost: dict,
+    monthly_gain: dict,
+    *,
+    include_year: bool,
+    fallback_year=None,
+) -> go.Figure:
+    series = [
+        {
+            "label": "Gasto total",
+            "color": JR_RED,
+            "raw_labels": monthly_cost.get("Mes", []) or [],
+            "values": monthly_cost.get("Valor", []) or [],
+        },
+        {
+            "label": "Ganho das entregas",
+            "color": "#15803D",
+            "raw_labels": monthly_gain.get("Mes", []) or [],
+            "values": monthly_gain.get("Valor", []) or [],
+        },
+    ]
+    ordered_labels = _ordered_month_labels(
+        series,
+        include_year=include_year,
+        fallback_year=fallback_year,
+    )
+    fig = go.Figure()
+    for index, item in enumerate(series):
+        value_map = _series_value_map(
+            item["raw_labels"],
+            item["values"],
+            label_formatter=lambda raw: format_month_for_chart(
+                raw,
+                include_year=include_year,
+                fallback_year=fallback_year,
+            ),
+        )
+        values = [value_map.get(label, 0.0) for label in ordered_labels]
+        fig.add_trace(
+            go.Scatter(
+                x=ordered_labels,
+                y=values,
+                name=item["label"],
+                mode="lines+markers",
+                line={"color": item["color"], "width": 3},
+                marker={"color": item["color"], "size": 7},
+                yaxis="y" if index == 0 else "y2",
+                hovertemplate="<b>%{fullData.name}</b><br>%{x}<br>R$ %{y:,.2f}<extra></extra>",
+            )
+        )
+    fig.update_xaxes(tickangle=-30, type="category")
+    fig.update_layout(
+        showlegend=True,
+        hovermode="x unified",
+        legend={"orientation": "h", "x": 0, "y": 1.15},
+        yaxis={
+            "title": "Gasto (R$)",
+            "rangemode": "tozero",
+            "tickprefix": "R$ ",
+            "automargin": True,
+        },
+        yaxis2={
+            "title": "Ganho (R$)",
+            "rangemode": "tozero",
+            "tickprefix": "R$ ",
+            "overlaying": "y",
+            "side": "right",
+            "showgrid": False,
+            "automargin": True,
+        },
+    )
+    return apply_theme(fig, height=370, margin={"l": 72, "r": 82, "t": 72, "b": 60})
+
+
 def multi_bar_chart(
     series: list[dict],
     *,
@@ -5889,25 +5963,11 @@ def render_frota() -> None:
     if show_monthly_gain:
         monthly_cost = data.get("mensal_total", {}) or {}
         monthly_gain = data.get("ganho_mensal", {}) or {}
-        total_monthly_fig = multi_bar_chart(
-            [
-                {
-                    "label": "Gasto total",
-                    "color": JR_RED,
-                    "raw_labels": monthly_cost.get("Mes", []) or [],
-                    "values": monthly_cost.get("Valor", []) or [],
-                },
-                {
-                    "label": "Ganho das entregas",
-                    "color": "#15803D",
-                    "raw_labels": monthly_gain.get("Mes", []) or [],
-                    "values": monthly_gain.get("Valor", []) or [],
-                },
-            ],
-            currency=True,
-            label_mode="month",
-            fallback_year=fallback_year,
+        total_monthly_fig = monthly_cost_gain_line_chart(
+            monthly_cost,
+            monthly_gain,
             include_year=include_year,
+            fallback_year=fallback_year,
         )
         total_monthly_title = "Gasto e ganho das entregas por mês"
     chart_items = [
