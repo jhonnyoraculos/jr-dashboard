@@ -4058,6 +4058,7 @@ def data_frota(params: dict | None = None) -> dict:
     if incluir_hoteis:
         mensal_total_frames.append((df_hoteis_costs, "Valor"))
     mensal_total = _ranking_monthly_sum(mensal_total_frames, "Valor")
+    mensal_ganho = _ranking_monthly_sum([(df_peso_total, "Valor")], "Valor")
     mensal_peso = _ranking_monthly_sum([(df_peso_total, "Peso")], "Peso")
     mensal_km = _ranking_monthly_km(df_km, df_comb_metrics)
     mensal_litros = _ranking_monthly_sum([(df_comb_metrics, "Litros")], "Litros")
@@ -4190,6 +4191,7 @@ def data_frota(params: dict | None = None) -> dict:
         "avisos_rodagem_rota": route_fuel_warnings,
         "dominancia_peso": dominancia_peso,
         "mensal_total": mensal_total,
+        "ganho_mensal": mensal_ganho,
         "peso_mensal": mensal_peso,
         "km_mensal": mensal_km,
         "litros_mensal": mensal_litros,
