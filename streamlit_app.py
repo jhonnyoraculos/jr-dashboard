@@ -44,7 +44,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-grafico-gasto-ganho-linhas-v1"
+APP_VERSION = "deploy-grafico-gasto-ganho-escala-unica-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -3594,7 +3594,7 @@ def monthly_cost_gain_line_chart(
         fallback_year=fallback_year,
     )
     fig = go.Figure()
-    for index, item in enumerate(series):
+    for item in series:
         value_map = _series_value_map(
             item["raw_labels"],
             item["values"],
@@ -3613,7 +3613,6 @@ def monthly_cost_gain_line_chart(
                 mode="lines+markers",
                 line={"color": item["color"], "width": 3},
                 marker={"color": item["color"], "size": 7},
-                yaxis="y" if index == 0 else "y2",
                 hovertemplate="<b>%{fullData.name}</b><br>%{x}<br>R$ %{y:,.2f}<extra></extra>",
             )
         )
@@ -3623,22 +3622,13 @@ def monthly_cost_gain_line_chart(
         hovermode="x unified",
         legend={"orientation": "h", "x": 0, "y": 1.15},
         yaxis={
-            "title": "Gasto (R$)",
+            "title": "Valor (R$)",
             "rangemode": "tozero",
             "tickprefix": "R$ ",
-            "automargin": True,
-        },
-        yaxis2={
-            "title": "Ganho (R$)",
-            "rangemode": "tozero",
-            "tickprefix": "R$ ",
-            "overlaying": "y",
-            "side": "right",
-            "showgrid": False,
             "automargin": True,
         },
     )
-    return apply_theme(fig, height=370, margin={"l": 72, "r": 82, "t": 72, "b": 60})
+    return apply_theme(fig, height=370, margin={"l": 72, "r": 52, "t": 72, "b": 60})
 
 
 def multi_bar_chart(
