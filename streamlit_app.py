@@ -45,7 +45,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-grafico-linha-rotulos-v1"
+APP_VERSION = "deploy-exportacao-png-graficos-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -81,9 +81,13 @@ BACKUP_TABLES = [
 PLOTLY_CONFIG = {
     "responsive": True,
     "displaylogo": False,
-    "displayModeBar": False,
+    "displayModeBar": True,
     "scrollZoom": False,
-    "toImageButtonOptions": {"format": "png", "scale": 2},
+    "toImageButtonOptions": {
+        "format": "png",
+        "filename": "grafico-jr-dashboard",
+        "scale": 3,
+    },
     "modeBarButtonsToRemove": ["lasso2d", "select2d"],
 }
 
@@ -4272,6 +4276,9 @@ def export_file_name(prefix: str, scope: str, ext: str) -> str:
 
 
 def chart_card(title: str, fig: go.Figure, *, key: str) -> None:
+    # O botao de camera do Plotly usa exatamente o layout exibido no navegador.
+    # Force fundos opacos para o PNG nunca herdar transparencias do tema do site.
+    fig.update_layout(paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
     with st.container(border=True):
         st.html(f'<div class="chart-title">{h(title)}</div>')
         scroll_height = chart_scroll_height(fig)
