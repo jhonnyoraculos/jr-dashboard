@@ -45,7 +45,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-grafico-gasto-ganho-nitido-v1"
+APP_VERSION = "deploy-grafico-bolhas-valores-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -3632,19 +3632,24 @@ def monthly_cost_gain_line_chart(
     for index, (item, value_map) in enumerate(zip(series, value_maps)):
         values = [value_map.get(label, 0.0) for label in ordered_labels]
         plotted_values = [value if value > 0 else None for value in values]
+        money_labels = [clear_value_label(value) if value > 0 else "" for value in values]
         is_cost = index == 0
         fig.add_trace(
             go.Scatter(
                 x=ordered_labels,
                 y=plotted_values,
                 name=item["label"],
-                mode="lines+markers",
+                mode="lines+markers+text",
                 line={"color": item["color"], "width": 3},
                 marker={
                     "color": item["color"],
-                    "size": 8,
-                    "line": {"color": "#FFFFFF", "width": 1.5},
+                    "size": 54,
+                    "line": {"color": "#FFFFFF", "width": 2},
                 },
+                text=money_labels,
+                texttemplate="<b>%{text}</b>",
+                textposition="middle center",
+                textfont={"color": "#FFFFFF", "size": 10, "family": "Inter, sans-serif"},
                 customdata=percentage_labels if is_cost else None,
                 hovertemplate=(
                     "<b>%{fullData.name}</b><br>%{x}<br>R$ %{y:,.2f}"
@@ -3654,47 +3659,46 @@ def monthly_cost_gain_line_chart(
                 ),
             )
         )
-        for point_index, (label, value) in enumerate(zip(ordered_labels, values)):
-            if value <= 0:
-                continue
-            money_label = clear_value_label(value)
-            annotation_text = (
-                f"<b>{money_label}</b><br><span style='color:#D97706'>{percentage_labels[point_index]}</span>"
-                if is_cost
-                else f"<b>{money_label}</b>"
-            )
-            fig.add_annotation(
-                x=label,
-                y=value,
-                text=annotation_text,
-                showarrow=False,
-                yshift=15,
-                font={"color": item["color"], "size": 11},
-                bgcolor="rgba(255,255,255,0.92)",
-                bordercolor="rgba(203,213,225,0.9)",
-                borderwidth=1,
-                borderpad=3,
-            )
+        if is_cost:
+            for point_index, (label, value) in enumerate(zip(ordered_labels, values)):
+                if value <= 0:
+                    continue
+                fig.add_annotation(
+                    x=label,
+                    y=value,
+                    text=f"<b>{percentage_labels[point_index]}</b>",
+                    showarrow=False,
+                    yshift=40,
+                    font={"color": "#D97706", "size": 11},
+                    bgcolor="rgba(255,255,255,0.9)",
+                    borderpad=2,
+                )
     fig.update_xaxes(tickangle=-30, type="category")
     yaxis = {
-        "title": "Valor (R$) · escala logarítmica",
+        "title": "Valor (R$)",
         "type": "log",
-        "tickprefix": "R$ ",
         "automargin": True,
         "gridcolor": "#E2E8F0",
     }
     if positive_values:
-        yaxis["range"] = [
-            math.log10(min(positive_values)) - 0.22,
-            math.log10(max(positive_values)) + 0.32,
+        lower_bound = math.log10(min(positive_values)) - 0.32
+        upper_bound = math.log10(max(positive_values)) + 0.38
+        tick_values = [
+            multiplier * (10 ** exponent)
+            for exponent in range(math.floor(lower_bound), math.ceil(upper_bound) + 1)
+            for multiplier in (1, 2, 5)
+            if lower_bound <= math.log10(multiplier * (10 ** exponent)) <= upper_bound
         ]
+        yaxis["range"] = [lower_bound, upper_bound]
+        yaxis["tickvals"] = tick_values
+        yaxis["ticktext"] = [clear_value_label(value) for value in tick_values]
     fig.update_layout(
         showlegend=True,
         hovermode="x unified",
-        legend={"orientation": "h", "x": 0, "y": 1.15},
+        legend={"orientation": "h", "x": 0, "y": 1.15, "itemsizing": "constant"},
         yaxis=yaxis,
     )
-    return apply_theme(fig, height=410, margin={"l": 80, "r": 58, "t": 88, "b": 64})
+    return apply_theme(fig, height=410, margin={"l": 88, "r": 58, "t": 88, "b": 64})
 
 
 def multi_bar_chart(
