@@ -45,7 +45,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-grafico-bolhas-valores-v1"
+APP_VERSION = "deploy-grafico-linha-rotulos-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -3634,6 +3634,12 @@ def monthly_cost_gain_line_chart(
         plotted_values = [value if value > 0 else None for value in values]
         money_labels = [clear_value_label(value) if value > 0 else "" for value in values]
         is_cost = index == 0
+        point_labels = [
+            f"<b>{money}</b><br>{percentage_labels[point_index]}"
+            if is_cost and money
+            else (f"<b>{money}</b>" if money else "")
+            for point_index, money in enumerate(money_labels)
+        ]
         fig.add_trace(
             go.Scatter(
                 x=ordered_labels,
@@ -3643,14 +3649,14 @@ def monthly_cost_gain_line_chart(
                 line={"color": item["color"], "width": 3},
                 marker={
                     "color": item["color"],
-                    "size": 54,
-                    "line": {"color": "#FFFFFF", "width": 2},
+                    "size": 9,
+                    "line": {"color": "#FFFFFF", "width": 1.5},
                 },
-                text=money_labels,
-                texttemplate="<b>%{text}</b>",
-                textposition="middle center",
-                textfont={"color": "#FFFFFF", "size": 10, "family": "Inter, sans-serif"},
+                text=point_labels,
+                textposition="top center",
+                textfont={"color": item["color"], "size": 11, "family": "Inter, sans-serif"},
                 customdata=percentage_labels if is_cost else None,
+                cliponaxis=False,
                 hovertemplate=(
                     "<b>%{fullData.name}</b><br>%{x}<br>R$ %{y:,.2f}"
                     "<br>Custo sobre o ganho: %{customdata}<extra></extra>"
@@ -3659,20 +3665,6 @@ def monthly_cost_gain_line_chart(
                 ),
             )
         )
-        if is_cost:
-            for point_index, (label, value) in enumerate(zip(ordered_labels, values)):
-                if value <= 0:
-                    continue
-                fig.add_annotation(
-                    x=label,
-                    y=value,
-                    text=f"<b>{percentage_labels[point_index]}</b>",
-                    showarrow=False,
-                    yshift=40,
-                    font={"color": "#D97706", "size": 11},
-                    bgcolor="rgba(255,255,255,0.9)",
-                    borderpad=2,
-                )
     fig.update_xaxes(tickangle=-30, type="category")
     yaxis = {
         "title": "Valor (R$)",
