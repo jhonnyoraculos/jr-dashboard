@@ -4,6 +4,7 @@ import base64
 import hashlib
 import html
 import importlib
+import math
 import os
 import re
 import subprocess
@@ -44,7 +45,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-grafico-percentual-custo-ganho-v1"
+APP_VERSION = "deploy-grafico-gasto-ganho-nitido-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -3574,6 +3575,16 @@ def monthly_cost_gain_line_chart(
     include_year: bool,
     fallback_year=None,
 ) -> go.Figure:
+    def clear_value_label(value: float) -> str:
+        absolute = abs(value)
+        if absolute >= 1_000_000:
+            number = f"{value / 1_000_000:.1f}".replace(".", ",")
+            return f"R$ {number} mi"
+        if absolute >= 1_000:
+            number = f"{value / 1_000:.0f}".replace(".", ",")
+            return f"R$ {number} mil"
+        return fmt_brl_compact(value)
+
     series = [
         {
             "label": "Gasto total",
@@ -3612,21 +3623,28 @@ def monthly_cost_gain_line_chart(
         for cost, gain in zip(cost_values, gain_values)
     ]
     percentage_labels = [fmt_percent(value) if value is not None else "—" for value in cost_percentages]
+    positive_values = [
+        value
+        for value in (*cost_values, *gain_values)
+        if value > 0
+    ]
     fig = go.Figure()
     for index, (item, value_map) in enumerate(zip(series, value_maps)):
         values = [value_map.get(label, 0.0) for label in ordered_labels]
+        plotted_values = [value if value > 0 else None for value in values]
         is_cost = index == 0
         fig.add_trace(
             go.Scatter(
                 x=ordered_labels,
-                y=values,
+                y=plotted_values,
                 name=item["label"],
-                mode="lines+markers+text" if is_cost else "lines+markers",
+                mode="lines+markers",
                 line={"color": item["color"], "width": 3},
-                marker={"color": item["color"], "size": 7},
-                text=percentage_labels if is_cost else None,
-                textposition="top center" if is_cost else None,
-                textfont={"color": "#D97706", "size": 11} if is_cost else None,
+                marker={
+                    "color": item["color"],
+                    "size": 8,
+                    "line": {"color": "#FFFFFF", "width": 1.5},
+                },
                 customdata=percentage_labels if is_cost else None,
                 hovertemplate=(
                     "<b>%{fullData.name}</b><br>%{x}<br>R$ %{y:,.2f}"
@@ -3636,19 +3654,47 @@ def monthly_cost_gain_line_chart(
                 ),
             )
         )
+        for point_index, (label, value) in enumerate(zip(ordered_labels, values)):
+            if value <= 0:
+                continue
+            money_label = clear_value_label(value)
+            annotation_text = (
+                f"<b>{money_label}</b><br><span style='color:#D97706'>{percentage_labels[point_index]}</span>"
+                if is_cost
+                else f"<b>{money_label}</b>"
+            )
+            fig.add_annotation(
+                x=label,
+                y=value,
+                text=annotation_text,
+                showarrow=False,
+                yshift=15,
+                font={"color": item["color"], "size": 11},
+                bgcolor="rgba(255,255,255,0.92)",
+                bordercolor="rgba(203,213,225,0.9)",
+                borderwidth=1,
+                borderpad=3,
+            )
     fig.update_xaxes(tickangle=-30, type="category")
+    yaxis = {
+        "title": "Valor (R$) · escala logarítmica",
+        "type": "log",
+        "tickprefix": "R$ ",
+        "automargin": True,
+        "gridcolor": "#E2E8F0",
+    }
+    if positive_values:
+        yaxis["range"] = [
+            math.log10(min(positive_values)) - 0.22,
+            math.log10(max(positive_values)) + 0.32,
+        ]
     fig.update_layout(
         showlegend=True,
         hovermode="x unified",
         legend={"orientation": "h", "x": 0, "y": 1.15},
-        yaxis={
-            "title": "Valor (R$)",
-            "rangemode": "tozero",
-            "tickprefix": "R$ ",
-            "automargin": True,
-        },
+        yaxis=yaxis,
     )
-    return apply_theme(fig, height=370, margin={"l": 72, "r": 52, "t": 72, "b": 60})
+    return apply_theme(fig, height=410, margin={"l": 80, "r": 58, "t": 88, "b": 64})
 
 
 def multi_bar_chart(
