@@ -45,7 +45,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-exportacao-png-graficos-v1"
+APP_VERSION = "deploy-rotulos-graficos-legiveis-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -3322,6 +3322,35 @@ def yearly_month_bar_chart(
     )
 
 
+def add_line_point_labels(
+    fig: go.Figure,
+    labels: list,
+    values: list[float],
+    texts: list[str],
+    *,
+    accent: str,
+) -> None:
+    for label, value, text in zip(labels, values, texts):
+        if not text:
+            continue
+        fig.add_annotation(
+            name="jr_line_value",
+            x=label,
+            y=value,
+            text=text,
+            showarrow=False,
+            yshift=11,
+            yanchor="bottom",
+            align="center",
+            font={"family": "Inter, sans-serif", "size": 11, "color": "#111827"},
+            bgcolor="rgba(255,255,255,0.96)",
+            bordercolor=accent,
+            borderwidth=1,
+            borderpad=3,
+            captureevents=False,
+        )
+
+
 def line_chart(labels: list[str], values: list[float]) -> go.Figure:
     values = [float(value or 0) for value in values]
     if values:
@@ -3335,15 +3364,18 @@ def line_chart(labels: list[str], values: list[float]) -> go.Figure:
         go.Scatter(
             x=labels,
             y=values,
-            mode="lines+markers+text",
+            mode="lines+markers",
             line={"color": JR_BLUE, "width": 3},
             marker={"color": JR_RED, "size": 7},
-            text=[fmt_brl_compact(value) for value in values],
-            textposition="top center",
-            textfont={"size": 10, "color": JR_BLUE},
-            cliponaxis=False,
             hovertemplate="<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>",
         )
+    )
+    add_line_point_labels(
+        fig,
+        labels,
+        values,
+        [f"<b>{fmt_brl_compact(value)}</b>" for value in values],
+        accent=JR_RED,
     )
     fig.update_xaxes(tickangle=-30, type="category")
     fig.update_yaxes(title="R$", range=y_range, automargin=True)
@@ -3639,7 +3671,7 @@ def monthly_cost_gain_line_chart(
         money_labels = [clear_value_label(value) if value > 0 else "" for value in values]
         is_cost = index == 0
         point_labels = [
-            f"<b>{money}</b><br>{percentage_labels[point_index]}"
+            f"<b>{money}</b><br><span style='color:#D97706'>{percentage_labels[point_index]}</span>"
             if is_cost and money
             else (f"<b>{money}</b>" if money else "")
             for point_index, money in enumerate(money_labels)
@@ -3649,18 +3681,14 @@ def monthly_cost_gain_line_chart(
                 x=ordered_labels,
                 y=plotted_values,
                 name=item["label"],
-                mode="lines+markers+text",
+                mode="lines+markers",
                 line={"color": item["color"], "width": 3},
                 marker={
                     "color": item["color"],
                     "size": 9,
                     "line": {"color": "#FFFFFF", "width": 1.5},
                 },
-                text=point_labels,
-                textposition="top center",
-                textfont={"color": item["color"], "size": 11, "family": "Inter, sans-serif"},
                 customdata=percentage_labels if is_cost else None,
-                cliponaxis=False,
                 hovertemplate=(
                     "<b>%{fullData.name}</b><br>%{x}<br>R$ %{y:,.2f}"
                     "<br>Custo sobre o ganho: %{customdata}<extra></extra>"
@@ -3668,6 +3696,13 @@ def monthly_cost_gain_line_chart(
                     else "<b>%{fullData.name}</b><br>%{x}<br>R$ %{y:,.2f}<extra></extra>"
                 ),
             )
+        )
+        add_line_point_labels(
+            fig,
+            ordered_labels,
+            values,
+            point_labels,
+            accent=item["color"],
         )
     fig.update_xaxes(tickangle=-30, type="category")
     yaxis = {
@@ -4019,6 +4054,11 @@ def chart_prefers_full_width(fig: go.Figure) -> bool:
 
 def export_ready_figure(fig: go.Figure, *, max_horizontal_rows: int = 10) -> go.Figure:
     export_fig = go.Figure(fig)
+    for annotation in export_fig.layout.annotations or ():
+        if getattr(annotation, "name", "") != "jr_line_value":
+            continue
+        annotation.bgcolor = "#FFFFFF"
+        annotation.font.size = max(int(annotation.font.size or 11), 14)
     for trace in export_fig.data:
         if getattr(trace, "type", "") != "bar" or getattr(trace, "orientation", None) != "h":
             continue
