@@ -52,7 +52,7 @@ DB_TABLES = {
     "salarios_transporte": "dashboard_salarios_transporte",
 }
 DB_METADATA_TABLE = "dashboard_metadata"
-BACKEND_BUILD_VERSION = "aluguel-rateio-meses-v1"
+BACKEND_BUILD_VERSION = "aluguel-multiplicar-meses-v1"
 BACKUP_METADATA_KEY = "backup.last_downloaded_at"
 _DB_ENGINE = None
 _METADATA_CACHE_SECONDS = float(os.environ.get("JR_METADATA_CACHE_SECONDS", "30") or 30)
@@ -2659,17 +2659,8 @@ def load_aluguel_veiculos() -> pd.DataFrame:
         return df.copy(deep=False)
 
 
-def _split_currency_total(total: float, count: int) -> list[float]:
-    if count <= 0:
-        return []
-    total_cents = int(round(float(total or 0.0) * 100))
-    sign = -1 if total_cents < 0 else 1
-    base, remainder = divmod(abs(total_cents), count)
-    return [sign * (base + (1 if index < remainder else 0)) / 100 for index in range(count)]
-
-
 def _expand_aluguel_periods(df: pd.DataFrame) -> pd.DataFrame:
-    """Consolida cada locacao e rateia seu valor entre todos os meses do periodo."""
+    """Completa todos os meses da locacao, repetindo o valor mensal informado."""
     if df is None or df.empty:
         return df.copy() if isinstance(df, pd.DataFrame) else _empty(_ALUGUEL_VEICULOS_COLUMNS)
 
@@ -2701,22 +2692,29 @@ def _expand_aluguel_periods(df: pd.DataFrame) -> pd.DataFrame:
             key_text(row.get("Observacao")),
             key_text(row.get("Categoria")),
         )
-        item = grouped.setdefault(key, {"row": row.to_dict(), "total": 0.0})
-        custo = pd.to_numeric(pd.Series([row.get("Custo")]), errors="coerce").iloc[0]
-        item["total"] += float(custo) if pd.notna(custo) else 0.0
+        item = grouped.setdefault(key, {"row": row.to_dict(), "rows_by_month": {}})
+        month = key_text(row.get("Mes"))
+        if not re.fullmatch(r"\d{4}-\d{2}", month):
+            data = pd.to_datetime(row.get("Data"), errors="coerce")
+            month = data.strftime("%Y-%m") if pd.notna(data) else inicio.strftime("%Y-%m")
+        item["rows_by_month"].setdefault(month, row.to_dict())
 
     expanded = passthrough
     for (inicio, fim, *_), item in grouped.items():
         months = list(pd.period_range(start=inicio, end=fim, freq="M"))
-        values = _split_currency_total(item["total"], len(months))
-        for month, value in zip(months, values):
+        template = item["row"]
+        monthly_value = pd.to_numeric(pd.Series([template.get("Custo")]), errors="coerce").iloc[0]
+        monthly_value = float(monthly_value) if pd.notna(monthly_value) else 0.0
+        for month in months:
+            month_key = str(month)
             month_start = month.start_time.date()
-            output = dict(item["row"])
-            output["Data"] = max(inicio, month_start)
-            output["Mes"] = str(month)
+            existing = item["rows_by_month"].get(month_key)
+            output = dict(existing or template)
+            output["Data"] = output.get("Data") if existing else max(inicio, month_start)
+            output["Mes"] = month_key
             output["Inicio"] = inicio
             output["Fim"] = fim
-            output["Custo"] = value
+            output["Custo"] = output.get("Custo") if existing else monthly_value
             output["Categoria"] = "Vex"
             expanded.append(output)
 
