@@ -52,7 +52,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-vex-pedagio-label-v1"
+APP_VERSION = "deploy-portugues-revisado-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -61,29 +61,29 @@ TABLE_FILTER_EMPTY_LABEL = "Sem informação"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras", "Aluguel de veículos"]
-PEDAGIO_TIPO_OPTIONS = ["Pedagio", "Extras", "Taxi", "IPVA", "Seguro", "Licenciamento", "DPVAT", "Outros"]
-PEDAGIO_OPTIONAL_PLATE_TYPES = {"Extras", "Taxi"}
+PEDAGIO_TIPO_OPTIONS = ["Pedágio", "Extras", "Táxi", "IPVA", "Seguro", "Licenciamento", "DPVAT", "Outros"]
+PEDAGIO_OPTIONAL_PLATE_TYPES = {"Extras", "Táxi"}
 BACKUP_INTERVAL_DAYS = 7
 BACKUP_TABLES = [
     ("placas", "Placas", "placas", backend.load_placas),
     (
         "salarios_transporte",
-        "Salarios Transporte",
+        "Salários Transporte",
         "salarios_transporte",
         backend.load_salarios_transporte,
     ),
-    ("combustivel", "Combustivel", "combustivel", backend.load_combustivel),
+    ("combustivel", "Combustível", "combustivel", backend.load_combustivel),
     ("combustivel_km", "KM mensal", "km_mensal", backend.load_combustivel_km),
     ("empilhadeira_horas", "Horas empilhadeiras", "horas_empilhadeiras", backend.load_empilhadeira_horas),
-    ("combustiveis", "Combustiveis", "combustiveis", backend.load_combustiveis),
+    ("combustiveis", "Combustíveis", "combustiveis", backend.load_combustiveis),
     ("postos", "Postos", "postos", backend.load_postos),
-    ("manutencao", "Manutencao", "manutencao", backend.load_manutencao),
+    ("manutencao", "Manutenção", "manutencao", backend.load_manutencao),
     ("pneus", "Pneus", "pneus", backend.load_pneus),
-    ("hoteis", "Hoteis", "hoteis", backend.load_hoteis),
+    ("hoteis", "Hotéis", "hoteis", backend.load_hoteis),
     ("peso", "Peso", "peso", backend.load_peso),
     ("rodagem_rota", "Rodagem por rota", "rodagem_por_rota", backend.load_rodagem_rota),
-    ("pedagio", "Pedagio Extras", "pedagio_extras", backend.load_pedagio),
-    ("aluguel_veiculos", "Aluguel de Veiculos Vex", "aluguel_veiculos_vex", backend.load_aluguel_veiculos),
+    ("pedagio", "Pedágio e Extras", "pedagio_extras", backend.load_pedagio),
+    ("aluguel_veiculos", "Aluguel de Veículos Vex", "aluguel_veiculos_vex", backend.load_aluguel_veiculos),
 ]
 
 PLOTLY_CONFIG = {
@@ -4205,7 +4205,7 @@ def compose_export_image(
                 draw = ImageDraw.Draw(placeholder)
                 draw.text(
                     (32, 32),
-                    f"Nao foi possivel renderizar: {export_text(chart_title)}",
+                    f"Não foi possível renderizar: {export_text(chart_title)}",
                     font=report_font(26, bold=True),
                     fill=JR_RED,
                 )
@@ -5514,8 +5514,8 @@ def ranking_row_label(
     parts = [
         f"{int(row.get('rank') or 0):02d} | {row.get('placa') or 'Sem placa'}",
         f"Total {money(row.get('total'))}",
-        f"Manutencao {money(row.get('manutencao'))}",
-        f"Pedagio/Extras {money(row.get('pedagio'))}",
+        f"Manutenção {money(row.get('manutencao'))}",
+        f"Pedágio/Extras {money(row.get('pedagio'))}",
         f"Peso {fmt_peso(row.get('peso_total'))}",
     ]
     if show_route_maintenance_daily:
@@ -5526,12 +5526,12 @@ def ranking_row_label(
     if show_daily and str(row.get("categoria") or "") == "Freteiro":
         parts.insert(
             2,
-            f"Diarias {money(row.get('gasto_diarias'))} ({fmt_num(row.get('dias_trabalhados'))} dias)",
+            f"Diárias {money(row.get('gasto_diarias'))} ({fmt_num(row.get('dias_trabalhados'))} dias)",
         )
     if _ranking_float(row, "salario_transporte") > 0:
-        parts.insert(2, f"Salario Transporte {money(row.get('salario_transporte'))}")
+        parts.insert(2, f"Salário Transporte {money(row.get('salario_transporte'))}")
     if not hide_fuel:
-        parts.insert(2, f"Combustivel {money(row.get('combustivel'))}")
+        parts.insert(2, f"Combustível {money(row.get('combustivel'))}")
         parts.extend([f"KM {fmt_num(row.get('km_total'))}", f"Litros {fmt_num(row.get('litros_total'))}"])
     return " | ".join(parts)
 
@@ -5701,7 +5701,7 @@ def dominance_cities_html(placa: str, cidades: list[dict]) -> str:
         return (
             '<div class="dominance-panel">'
             f'<p class="dominance-title">{h(placa)}</p>'
-            '<p class="dominance-note">Essa placa aparece no peso total, mas ainda nao ha cidades dominadas por ela nos dados filtrados.</p>'
+            '<p class="dominance-note">Essa placa aparece no peso total, mas ainda não há cidades dominadas por ela nos dados filtrados.</p>'
             '</div>'
         )
 
@@ -5730,7 +5730,7 @@ def dominance_route_ranking_html(rotas: list[dict]) -> str:
         return (
             '<div class="dominance-panel dominance-panel--routes">'
             '<p class="dominance-title">Ranking de peso por rota e placa</p>'
-            '<p class="dominance-note">Ainda nao ha rotas com peso para os filtros selecionados.</p>'
+            '<p class="dominance-note">Ainda não há rotas com peso para os filtros selecionados.</p>'
             '</div>'
         )
 
@@ -5749,7 +5749,7 @@ def dominance_route_ranking_html(rotas: list[dict]) -> str:
             f'<span class="dominance-city-name" data-label="Rota">{index:02d} - {h(item.get("rota") or "Sem rota")}</span>'
             f'<span class="dominance-city-plate" data-label="Placa">{h(item.get("placa") or "Sem placa")}</span>'
             f'<span class="dominance-city-metric" data-label="Peso">{h(fmt_peso(item.get("peso")))}</span>'
-            f'<span class="dominance-city-metric" data-label="Dominio">{h(fmt_num(item.get("participacao"), 2))}%</span>'
+            f'<span class="dominance-city-metric" data-label="Domínio">{h(fmt_num(item.get("participacao"), 2))}%</span>'
             f'<span class="dominance-city-metric" data-label="Total rota">{h(fmt_peso(item.get("peso_rota")))}</span>'
             '</div>'
         )
@@ -6244,19 +6244,19 @@ def render_home() -> None:
             <ul class="home-list"><li>Ordenação por combustível, manutenção, pedágio/extras ou total</li><li>Métricas individuais dentro da própria linha</li><li>Filtros por ano, mês e categoria</li></ul>
             <span class="home-link">Abrir dashboard &rarr;</span>
           </a>
-          <a class="home-card" href="?page=combustivel" target="_self" aria-label="Abrir dashboard CombustÃ­vel">
+          <a class="home-card" href="?page=combustivel" target="_self" aria-label="Abrir dashboard Combustível">
             <div><span class="home-chip">Combustível</span><h2>Consumo, custo e eficiência da frota</h2></div>
             <p class="home-card-text">Filtros por mês, placa, posto e tipo de combustível com KPIs e gráficos de desempenho.</p>
             <ul class="home-list"><li>KPIs automáticos de custo, km e litros</li><li>Comparativo por posto e tipo de combustível</li><li>Histórico mensal de consumo e gastos</li></ul>
             <span class="home-link">Abrir dashboard &rarr;</span>
           </a>
-          <a class="home-card" href="?page=manutencao" target="_self" aria-label="Abrir dashboard ManutenÃ§Ã£o">
+          <a class="home-card" href="?page=manutencao" target="_self" aria-label="Abrir dashboard Manutenção">
             <div><span class="home-chip">Manutenção</span><h2>Gestão de oficinas e serviços</h2></div>
             <p class="home-card-text">Acompanhe gastos por placa, oficina e mês, com ticket médio atualizado.</p>
             <ul class="home-list"><li>Resumo financeiro com ticket médio</li><li>Distribuição por placa e oficina</li><li>Curva mensal de investimentos</li></ul>
             <span class="home-link">Abrir dashboard &rarr;</span>
           </a>
-          <a class="home-card" href="?page=hoteis" target="_self" aria-label="Abrir dashboard HotÃ©is">
+          <a class="home-card" href="?page=hoteis" target="_self" aria-label="Abrir dashboard Hotéis">
             <div><span class="home-chip">Hotéis</span><h2>Reservas e hospedagens da equipe</h2></div>
             <p class="home-card-text">Filtros por mês, cidade e hotel para entender os investimentos em hospedagem.</p>
             <ul class="home-list"><li>KPIs automáticos de valor total, reservas e médias</li><li>Ranking por cidade e hotel/pousada</li><li>Histórico mensal dos gastos com hospedagem</li></ul>
@@ -6286,7 +6286,7 @@ def _entry_month(value: date) -> str:
 
 
 def _aluguel_cycle_dates(inicio: date, fim: date) -> list[date]:
-    """Retorna uma data representativa de cada mes tocado pela locacao."""
+    """Retorna uma data representativa de cada mês incluído na locação."""
     if not inicio or not fim or fim < inicio:
         return []
     months = pd.period_range(start=inicio, end=fim, freq="M")
@@ -6616,7 +6616,7 @@ def _save_plate_sheet(
             categoria_final = "Transporte"
         diaria = _parse_brl_number(row.get("Diaria (R$)")) or 0.0
         if diaria < 0:
-            st.warning(f"A diaria de {new_plate} nao pode ser negativa.")
+            st.warning(f"A diária de {new_plate} não pode ser negativa.")
             return False
         if categoria_final != "Freteiro":
             diaria = 0.0
@@ -6650,7 +6650,7 @@ def _save_plate_sheet(
                 )
                 changed = True
     except Exception as exc:
-        st.error("NÃ£o foi possÃ­vel salvar a tabela de placas no Neon.")
+        st.error("Não foi possível salvar a tabela de placas no Neon.")
         st.exception(exc)
         return False
 
@@ -6659,7 +6659,7 @@ def _save_plate_sheet(
         clear_cached_reads()
         st.success("Tabela de placas salva.")
     else:
-        st.info("Nenhuma alteraÃ§Ã£o para salvar.")
+        st.info("Nenhuma alteração para salvar.")
     st.rerun()
     return True
 
@@ -7511,13 +7511,13 @@ def _render_backup_panel() -> None:
         status_error = clean_text(exc)
 
     due = _backup_due(last_downloaded)
-    with st.expander("Backup de seguranca", expanded=due):
+    with st.expander("Backup de segurança", expanded=due):
         if due:
             st.warning("Recomendado baixar o backup semanal dos dados.")
         else:
-            st.info(f"Ultimo backup registrado: {_format_backup_datetime(last_downloaded)}.")
+            st.info(f"Último backup registrado: {_format_backup_datetime(last_downloaded)}.")
         if status_error:
-            st.caption(f"Nao foi possivel consultar a data do ultimo backup: {status_error}")
+            st.caption(f"Não foi possível consultar a data do último backup: {status_error}")
 
         file_date = datetime.now(BR_TZ).strftime("%Y-%m-%d_%H-%M")
         backup_version = backend.dashboard_data_version(
@@ -7535,8 +7535,8 @@ def _render_backup_panel() -> None:
 
         mark_error = st.session_state.pop("backup_mark_error", "")
         if mark_error:
-            st.caption(f"O backup foi gerado, mas nao foi possivel registrar a data: {mark_error}")
-        st.caption("O arquivo ZIP contem uma planilha por tabela e um resumo com a contagem de registros.")
+            st.caption(f"O backup foi gerado, mas não foi possível registrar a data: {mark_error}")
+        st.caption("O arquivo ZIP contém uma planilha por tabela e um resumo com a contagem de registros.")
 
 
 def _sheet_export_frame(df: pd.DataFrame, columns: list[tuple[str, str]]) -> pd.DataFrame:
@@ -7569,7 +7569,7 @@ def _render_sheet_downloads(
             current_df = pd.DataFrame()
     except Exception as exc:
         current_df = pd.DataFrame()
-        st.warning("Nao foi possivel carregar os dados cadastrados para exportacao.")
+        st.warning("Não foi possível carregar os dados cadastrados para exportação.")
         st.caption(str(exc))
 
     selected_month = None
@@ -7578,7 +7578,7 @@ def _render_sheet_downloads(
         current_month = date.today().strftime("%Y-%m")
         default_index = month_options.index(current_month) if current_month in month_options else 0
         selected_month = st.selectbox(
-            "Mes para exportar",
+            "Mês para exportar",
             month_options,
             index=default_index,
             format_func=month_filter_label,
@@ -7587,7 +7587,7 @@ def _render_sheet_downloads(
         month_values = current_df["Mes"].astype("string").fillna("").str.strip()
         current_df = current_df.loc[month_values.eq(selected_month)].copy()
     else:
-        st.caption("Nenhum mes cadastrado para exportar.")
+        st.caption("Nenhum mês cadastrado para exportar.")
 
     data_frame = _sheet_export_frame(current_df, columns)
     example_frame = pd.DataFrame([example], columns=[target for _, target in columns])
@@ -7615,11 +7615,11 @@ def _render_sheet_downloads(
         )
     if selected_month:
         st.caption(
-            f"A planilha com dados contem {len(data_frame)} registro(s) de {month_filter_label(selected_month)}. "
+            f"A planilha com dados contém {len(data_frame)} registro(s) de {month_filter_label(selected_month)}. "
             "Os dois arquivos usam o formato aceito abaixo."
         )
     else:
-        st.caption(f"A planilha com dados contem {len(data_frame)} registro(s). Os dois arquivos usam o formato aceito abaixo.")
+        st.caption(f"A planilha com dados contém {len(data_frame)} registro(s). Os dois arquivos usam o formato aceito abaixo.")
 
 
 def _read_uploaded_sheet(
@@ -8166,12 +8166,12 @@ def _clear_hoteis_last_import() -> None:
 def _undo_hoteis_last_import() -> None:
     rows = st.session_state.get("cad_hotel_last_import_rows") or []
     if not rows:
-        st.warning("Nao ha importacao recente para apagar.")
+        st.warning("Não há importação recente para apagar.")
         return
     try:
         deleted = backend.delete_matching_dashboard_records("hoteis", rows)
     except Exception as exc:
-        st.error("Nao foi possivel apagar a ultima importacao.")
+        st.error("Não foi possível apagar a última importação.")
         st.exception(exc)
         return
     _clear_hoteis_last_import()
@@ -8186,17 +8186,17 @@ def _render_hoteis_sheet_import() -> None:
     last_rows = st.session_state.get("cad_hotel_last_import_rows") or []
     if last_rows:
         last_count = st.session_state.get("cad_hotel_last_import_count", len(last_rows))
-        st.warning(f"Ultima importacao por planilha: {last_count} hospedagem(ns).")
+        st.warning(f"Última importação por planilha: {last_count} hospedagem(ns).")
         undo_col, clear_col = st.columns([1, 1])
         with undo_col:
-            if st.button("Apagar ultima importacao", type="primary", width="stretch", key="cad_hotel_undo_import"):
+            if st.button("Apagar última importação", type="primary", width="stretch", key="cad_hotel_undo_import"):
                 _undo_hoteis_last_import()
         with clear_col:
-            if st.button("Manter importacao", width="stretch", key="cad_hotel_keep_import"):
+            if st.button("Manter importação", width="stretch", key="cad_hotel_keep_import"):
                 _clear_hoteis_last_import()
                 st.rerun()
 
-    with st.expander("Adicionar hoteis por planilha", expanded=False):
+    with st.expander("Adicionar hotéis por planilha", expanded=False):
         _render_sheet_downloads(
             backend.load_hoteis,
             [
@@ -8221,7 +8221,7 @@ def _render_hoteis_sheet_import() -> None:
             },
             key_prefix="cad_hotel_sheet",
             file_prefix="hoteis",
-            sheet_name="Hoteis",
+            sheet_name="Hotéis",
         )
         uploaded = st.file_uploader("Enviar planilha", type=["xlsx", "csv"], key="cad_hotel_upload")
         if uploaded is None:
@@ -8230,7 +8230,7 @@ def _render_hoteis_sheet_import() -> None:
         try:
             raw_df = _read_uploaded_sheet(uploaded, HOTEIS_SHEET_ALIASES)
         except Exception as exc:
-            st.error("Nao foi possivel ler a planilha. Envie um arquivo .xlsx ou .csv.")
+            st.error("Não foi possível ler a planilha. Envie um arquivo .xlsx ou .csv.")
             st.exception(exc)
             return
 
@@ -8243,11 +8243,15 @@ def _render_hoteis_sheet_import() -> None:
                 st.write(f"...mais {len(errors) - 8} erro(s).")
             return
         if not rows:
-            st.warning("Nenhuma linha valida encontrada na planilha.")
+            st.warning("Nenhuma linha válida encontrada na planilha.")
             return
 
         preview = pd.DataFrame(rows)
-        st.dataframe(preview[["Data", "Mes", "Cidade", "Hotel", "Motorista", "Ajudante", "Valor"]], width="stretch", hide_index=True)
+        st.dataframe(
+            preview[["Data", "Mes", "Cidade", "Hotel", "Motorista", "Ajudante", "Valor"]].rename(columns={"Mes": "Mês"}),
+            width="stretch",
+            hide_index=True,
+        )
         if st.button(f"Importar {len(rows)} hospedagem(ns)", type="primary", width="stretch", key="cad_hotel_import_sheet"):
             imported_rows: list[dict] = []
             skipped_rows = 0
@@ -8260,8 +8264,8 @@ def _render_hoteis_sheet_import() -> None:
                     )
             except Exception as exc:
                 st.error(
-                    "A importacao foi cancelada sem salvar um lote incompleto. "
-                    "Tente novamente; os registros ja existentes nao serao duplicados."
+                    "A importação foi cancelada sem salvar um lote incompleto. "
+                    "Tente novamente; os registros já existentes não serão duplicados."
                 )
                 st.exception(exc)
                 return
@@ -8274,7 +8278,7 @@ def _render_hoteis_sheet_import() -> None:
             clear_cached_reads()
             st.success(
                 f"{len(imported_rows)} hospedagem(ns) nova(s) importada(s) e "
-                f"{skipped_rows} ja existente(s) mantida(s)."
+                f"{skipped_rows} já existente(s) mantida(s)."
             )
             st.rerun()
 
@@ -8287,12 +8291,12 @@ def _clear_peso_last_import() -> None:
 def _undo_peso_last_import() -> None:
     rows = st.session_state.get("cad_peso_last_import_rows") or []
     if not rows:
-        st.warning("Nao ha importacao recente para apagar.")
+        st.warning("Não há importação recente para apagar.")
         return
     try:
         deleted = backend.delete_matching_dashboard_records("peso", rows)
     except Exception as exc:
-        st.error("Nao foi possivel apagar a ultima importacao.")
+        st.error("Não foi possível apagar a última importação.")
         st.exception(exc)
         return
     _clear_peso_last_import()
@@ -8339,7 +8343,7 @@ def _render_peso_workbook_downloads() -> None:
     except Exception as exc:
         deliveries = pd.DataFrame()
         route_km = pd.DataFrame()
-        st.warning("Nao foi possivel carregar todos os dados para exportacao.")
+        st.warning("Não foi possível carregar todos os dados para exportação.")
         st.caption(clean_text(exc))
 
     month_frames = [
@@ -8354,7 +8358,7 @@ def _render_peso_workbook_downloads() -> None:
         current_month = date.today().strftime("%Y-%m")
         default_index = month_options.index(current_month) if current_month in month_options else 0
         selected_month = st.selectbox(
-            "Mes para exportar",
+            "Mês para exportar",
             month_options,
             index=default_index,
             format_func=month_filter_label,
@@ -8412,13 +8416,13 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
     last_rows = st.session_state.get("cad_peso_last_import_rows") or []
     if last_rows:
         last_count = st.session_state.get("cad_peso_last_import_count", len(last_rows))
-        st.warning(f"Ultima importacao por planilha: {last_count} entrega(s).")
+        st.warning(f"Última importação por planilha: {last_count} entrega(s).")
         undo_col, clear_col = st.columns([1, 1])
         with undo_col:
-            if st.button("Apagar ultima importacao", type="primary", width="stretch", key="cad_peso_undo_import"):
+            if st.button("Apagar última importação", type="primary", width="stretch", key="cad_peso_undo_import"):
                 _undo_peso_last_import()
         with clear_col:
-            if st.button("Manter importacao", width="stretch", key="cad_peso_keep_import"):
+            if st.button("Manter importação", width="stretch", key="cad_peso_keep_import"):
                 _clear_peso_last_import()
                 st.rerun()
 
@@ -8446,7 +8450,7 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
                 )
             )
         except Exception as exc:
-            st.error("Nao foi possivel ler a planilha. Envie um arquivo .xlsx ou .csv.")
+            st.error("Não foi possível ler a planilha. Envie um arquivo .xlsx ou .csv.")
             st.exception(exc)
             return
 
@@ -8461,13 +8465,19 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
                 st.write(f"...mais {len(errors) - 8} erro(s).")
             return
         if not rows and not route_rows:
-            st.warning("Nenhuma linha valida encontrada na planilha.")
+            st.warning("Nenhuma linha válida encontrada na planilha.")
             return
 
         if rows:
             preview = pd.DataFrame(rows)
             st.markdown("**Entregas**")
-            st.dataframe(preview[["Data", "Mes", "Cidade", "Rota", "PLACA", "Peso", "Valor", "Categoria"]], width="stretch", hide_index=True)
+            st.dataframe(
+                preview[["Data", "Mes", "Cidade", "Rota", "PLACA", "Peso", "Valor", "Categoria"]].rename(
+                    columns={"Mes": "Mês", "PLACA": "Placa"}
+                ),
+                width="stretch",
+                hide_index=True,
+            )
             _render_peso_import_summary(preview)
         if route_rows:
             st.markdown("**Rodagem por rota**")
@@ -8496,8 +8506,8 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
                         )
             except Exception as exc:
                 st.error(
-                    "A importacao foi cancelada sem salvar um lote incompleto. "
-                    "Tente novamente; os registros ja existentes nao serao duplicados."
+                    "A importação foi cancelada sem salvar um lote incompleto. "
+                    "Tente novamente; os registros já existentes não serão duplicados."
                 )
                 st.exception(exc)
                 return
@@ -8511,7 +8521,7 @@ def _render_peso_sheet_import(plate_map: dict[str, str]) -> None:
             clear_cached_reads()
             st.success(
                 f"{len(imported_rows)} entrega(s) nova(s) importada(s), "
-                f"{skipped_rows} ja existente(s) mantida(s) e "
+                f"{skipped_rows} já existente(s) mantida(s) e "
                 f"{len(route_rows)} rodagem(ns) por rota salva(s)."
             )
             st.rerun()
@@ -8554,7 +8564,7 @@ def _render_peso_route_import() -> None:
         try:
             raw_df = _read_uploaded_sheet(uploaded, PESO_ROUTE_SHEET_ALIASES)
         except Exception as exc:
-            st.error("Nao foi possivel ler a planilha. Envie um arquivo .xlsx ou .csv.")
+            st.error("Não foi possível ler a planilha. Envie um arquivo .xlsx ou .csv.")
             st.exception(exc)
             return
 
@@ -8567,19 +8577,19 @@ def _render_peso_route_import() -> None:
                 st.write(f"...mais {len(errors) - 8} erro(s).")
             return
         if not rows:
-            st.warning("Nenhuma rota valida encontrada na planilha.")
+            st.warning("Nenhuma rota válida encontrada na planilha.")
             return
 
         try:
             preview_result = backend.preview_peso_route_updates(rows)
         except Exception as exc:
-            st.error("Nao foi possivel conferir as rotas com os pesos cadastrados.")
+            st.error("Não foi possível conferir as rotas com os pesos cadastrados.")
             st.warning(clean_text(exc))
             return
 
         match_errors = preview_result.get("errors") or []
         if match_errors:
-            st.warning("Nenhum dado foi alterado. Corrija estas diferencas antes de importar:")
+            st.warning("Nenhum dado foi alterado. Corrija estas diferenças antes de importar:")
             for error in match_errors[:12]:
                 st.write(error)
             if len(match_errors) > 12:
@@ -8588,7 +8598,7 @@ def _render_peso_route_import() -> None:
 
         match_warnings = preview_result.get("warnings") or []
         if match_warnings:
-            st.warning("Estas linhas nao possuem registro de Peso e serao ignoradas:")
+            st.warning("Estas linhas não possuem registro de peso e serão ignoradas:")
             for warning in match_warnings[:12]:
                 st.write(warning)
             if len(match_warnings) > 12:
@@ -8597,7 +8607,7 @@ def _render_peso_route_import() -> None:
         matches = preview_result.get("matches") or []
         preview = pd.DataFrame(matches)
         if preview.empty:
-            st.warning("Nao ha registros de peso correspondentes a esta planilha.")
+            st.warning("Não há registros de peso correspondentes a esta planilha.")
             return
 
         route_targets = len(
@@ -8636,11 +8646,11 @@ def _render_peso_route_import() -> None:
                 f"{item['Placa informada']} -> {item['Placa cadastrada']}"
                 for item in adjusted_plates
             )
-            st.info(f"Diferencas de digitacao reconhecidas: {adjustments}.")
+            st.info(f"Diferenças de digitação reconhecidas: {adjustments}.")
         st.success(
             f"{len(rows)} linha(s) conferida(s) em "
-            f"{route_targets} combinacao(oes) de data e placa. "
-            f"A previa abaixo mostra o pareamento com {len(preview)} registro(s) de peso."
+            f"{route_targets} combinação(ões) de data e placa. "
+            f"A prévia abaixo mostra o pareamento com {len(preview)} registro(s) de peso."
         )
         st.dataframe(
             preview_display[[column for column in preview_columns if column in preview_display.columns]],
@@ -8661,7 +8671,7 @@ def _render_peso_route_import() -> None:
                 with st.spinner("Conferindo os registros e salvando todas as rotas..."):
                     updated = backend.update_peso_routes(rows)
             except Exception as exc:
-                st.error("A importacao foi cancelada sem deixar uma atualizacao parcial de rotas.")
+                st.error("A importação foi cancelada sem deixar uma atualização parcial de rotas.")
                 st.warning(clean_text(exc))
                 return
             _reset_dataset_editor("cad_peso_table")
@@ -8739,7 +8749,7 @@ def _render_rodagem_rota_management(plate_map: dict[str, str]) -> None:
                 )
                 route_rows, errors = _rodagem_rota_rows_from_sheet(raw_df)
             except Exception as exc:
-                st.error("Nao foi possivel ler a rodagem por rota.")
+                st.error("Não foi possível ler a rodagem por rota.")
                 st.exception(exc)
                 route_rows, errors = [], []
             if errors:
@@ -8764,7 +8774,7 @@ def _render_rodagem_rota_management(plate_map: dict[str, str]) -> None:
                                 replace_keys=["Mes", "Rota", "PLACA"],
                             )
                     except Exception as exc:
-                        st.error("A importacao foi cancelada sem deixar uma rodagem parcial.")
+                        st.error("A importação foi cancelada sem deixar uma rodagem parcial.")
                         st.exception(exc)
                     else:
                         _reset_dataset_editor("cad_rodagem_rota_table")
@@ -8797,18 +8807,18 @@ def _clear_combustivel_last_import() -> None:
 def _undo_combustivel_last_import() -> None:
     rows = st.session_state.get("cad_comb_last_import_rows") or []
     if not rows:
-        st.warning("Nao ha importacao recente para apagar.")
+        st.warning("Não há importação recente para apagar.")
         return
     try:
         deleted = backend.delete_matching_dashboard_records("combustivel", rows)
     except Exception as exc:
-        st.error("Nao foi possivel apagar a ultima importacao.")
+        st.error("Não foi possível apagar a última importação.")
         st.exception(exc)
         return
     _clear_combustivel_last_import()
     _reset_dataset_editor("cad_comb_table")
     clear_cached_reads()
-    st.success(f"{deleted} lancamento(s) apagado(s).")
+    st.success(f"{deleted} lançamento(s) apagado(s).")
     st.rerun()
 
 
@@ -8817,17 +8827,17 @@ def _render_combustivel_sheet_import(plate_map: dict[str, str]) -> None:
     last_rows = st.session_state.get("cad_comb_last_import_rows") or []
     if last_rows:
         last_count = st.session_state.get("cad_comb_last_import_count", len(last_rows))
-        st.warning(f"Ultima importacao por planilha: {last_count} lancamento(s).")
+        st.warning(f"Última importação por planilha: {last_count} lançamento(s).")
         undo_col, clear_col = st.columns([1, 1])
         with undo_col:
-            if st.button("Apagar ultima importacao", type="primary", width="stretch", key="cad_comb_undo_import"):
+            if st.button("Apagar última importação", type="primary", width="stretch", key="cad_comb_undo_import"):
                 _undo_combustivel_last_import()
         with clear_col:
-            if st.button("Manter importacao", width="stretch", key="cad_comb_keep_import"):
+            if st.button("Manter importação", width="stretch", key="cad_comb_keep_import"):
                 _clear_combustivel_last_import()
                 st.rerun()
 
-    with st.expander("Adicionar combustivel por planilha", expanded=False):
+    with st.expander("Adicionar combustível por planilha", expanded=False):
         _render_sheet_downloads(
             backend.load_combustivel,
             [
@@ -8848,7 +8858,7 @@ def _render_combustivel_sheet_import(plate_map: dict[str, str]) -> None:
             },
             key_prefix="cad_comb_sheet",
             file_prefix="combustivel",
-            sheet_name="Combustivel",
+            sheet_name="Combustível",
         )
         uploaded = st.file_uploader("Enviar planilha", type=["xlsx", "csv"], key="cad_comb_upload")
         if uploaded is None:
@@ -8857,7 +8867,7 @@ def _render_combustivel_sheet_import(plate_map: dict[str, str]) -> None:
         try:
             raw_df = _read_uploaded_sheet(uploaded, COMBUSTIVEL_SHEET_ALIASES)
         except Exception as exc:
-            st.error("Nao foi possivel ler a planilha. Envie um arquivo .xlsx ou .csv.")
+            st.error("Não foi possível ler a planilha. Envie um arquivo .xlsx ou .csv.")
             st.exception(exc)
             return
 
@@ -8870,13 +8880,19 @@ def _render_combustivel_sheet_import(plate_map: dict[str, str]) -> None:
                 st.write(f"...mais {len(errors) - 8} erro(s).")
             return
         if not rows:
-            st.warning("Nenhuma linha valida encontrada na planilha.")
+            st.warning("Nenhuma linha válida encontrada na planilha.")
             return
 
         preview = pd.DataFrame(rows)
-        st.success(f"{len(rows)} lancamento(s) prontos para importar.")
-        st.dataframe(preview[["Data", "Mes", "PLACA", "Combustivel", "POSTOS", "Litros", "Custo", "Categoria"]], width="stretch", hide_index=True)
-        if st.button("Importar combustivel", type="primary", width="stretch", key="cad_comb_import_confirm"):
+        st.success(f"{len(rows)} lançamento(s) prontos para importar.")
+        st.dataframe(
+            preview[["Data", "Mes", "PLACA", "Combustivel", "POSTOS", "Litros", "Custo", "Categoria"]].rename(
+                columns={"Mes": "Mês", "PLACA": "Placa", "Combustivel": "Combustível", "POSTOS": "Posto"}
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+        if st.button("Importar combustível", type="primary", width="stretch", key="cad_comb_import_confirm"):
             imported_rows: list[dict] = []
             skipped_rows = 0
             try:
@@ -8888,8 +8904,8 @@ def _render_combustivel_sheet_import(plate_map: dict[str, str]) -> None:
                     )
             except Exception as exc:
                 st.error(
-                    "A importacao foi cancelada sem salvar um lote incompleto. "
-                    "Tente novamente; os registros ja existentes nao serao duplicados."
+                    "A importação foi cancelada sem salvar um lote incompleto. "
+                    "Tente novamente; os registros já existentes não serão duplicados."
                 )
                 st.exception(exc)
                 return
@@ -8901,16 +8917,16 @@ def _render_combustivel_sheet_import(plate_map: dict[str, str]) -> None:
             _reset_dataset_editor("cad_comb_table")
             clear_cached_reads()
             st.success(
-                f"{len(imported_rows)} lancamento(s) novo(s) importado(s) e "
-                f"{skipped_rows} ja existente(s) mantido(s)."
+                f"{len(imported_rows)} lançamento(s) novo(s) importado(s) e "
+                f"{skipped_rows} já existente(s) mantido(s)."
             )
             st.rerun()
 
 
 @st.fragment
 def _render_peso_month_reset() -> None:
-    with st.expander("Zerar peso por mes", expanded=False):
-        st.warning("Essa acao apaga todos os lancamentos de peso do mes escolhido.")
+    with st.expander("Zerar peso por mês", expanded=False):
+        st.warning("Essa ação apaga todos os lançamentos de peso do mês escolhido.")
 
         anos = [CURRENT_YEAR]
         df_preview = pd.DataFrame()
@@ -8920,7 +8936,7 @@ def _render_peso_month_reset() -> None:
                 parsed_years = pd.to_datetime(df_preview["Mes"], errors="coerce").dt.year.dropna().astype(int).unique().tolist()
                 anos = sorted(set(anos) | set(parsed_years), reverse=True)
         except Exception as exc:
-            st.info("Nao foi possivel carregar a tabela de peso para prever os totais, mas a exclusao ainda pode ser tentada.")
+            st.info("Não foi possível carregar a tabela de peso para prever os totais, mas a exclusão ainda pode ser tentada.")
             st.caption(str(exc))
 
         c1, c2 = st.columns(2)
@@ -8940,19 +8956,19 @@ def _render_peso_month_reset() -> None:
             mask = df_preview["Mes"].astype("string").str.strip().eq(mes_key)
             linhas = int(mask.sum())
             peso_total = float(pd.to_numeric(df_preview.loc[mask, "Peso"], errors="coerce").sum()) if "Peso" in df_preview.columns else 0.0
-            st.caption(f"{mes_key}: {linhas} lancamento(s), {fmt_peso(peso_total)}.")
+            st.caption(f"{mes_key}: {linhas} lançamento(s), {fmt_peso(peso_total)}.")
         else:
-            st.caption(f"Mes selecionado: {mes_key}.")
+            st.caption(f"Mês selecionado: {mes_key}.")
 
         confirmar = st.checkbox(f"Confirmo que quero zerar o peso de {mes_key}.", key="cad_peso_reset_confirm")
-        if st.button("Zerar mes de peso", type="primary", width="stretch", disabled=not confirmar, key="cad_peso_reset_button"):
+        if st.button("Zerar mês de peso", type="primary", width="stretch", disabled=not confirmar, key="cad_peso_reset_button"):
             try:
                 delete_month = getattr(backend, "delete_dashboard_month", None)
                 if callable(delete_month):
                     deleted = delete_month("peso", mes_key)
                 else:
                     if df_preview.empty:
-                        raise RuntimeError("A tabela de peso nao foi carregada para apagar pelo modo compativel.")
+                        raise RuntimeError("A tabela de peso não foi carregada para apagar pelo modo compatível.")
                     fallback = df_preview.copy()
                     month_mask = fallback["Mes"].astype("string").str.strip().eq(mes_key) if "Mes" in fallback.columns else pd.Series(False, index=fallback.index)
                     if "Data" in fallback.columns:
@@ -8961,12 +8977,12 @@ def _render_peso_month_reset() -> None:
                     rows = fallback.loc[month_mask].to_dict("records")
                     deleted = backend.delete_matching_dashboard_records("peso", rows) if rows else 0
             except Exception as exc:
-                st.error("Nao foi possivel zerar esse mes no Neon.")
+                st.error("Não foi possível zerar esse mês no Neon.")
                 st.exception(exc)
                 return
             _reset_dataset_editor("cad_peso_table")
             clear_cached_reads()
-            st.success(f"{deleted} lancamento(s) de peso apagado(s) em {mes_key}.")
+            st.success(f"{deleted} lançamento(s) de peso apagado(s) em {mes_key}.")
             st.rerun()
 
 
@@ -8978,18 +8994,18 @@ def _clear_pedagio_last_import() -> None:
 def _undo_pedagio_last_import() -> None:
     rows = st.session_state.get("cad_ped_last_import_rows") or []
     if not rows:
-        st.warning("Nao ha importacao recente para apagar.")
+        st.warning("Não há importação recente para apagar.")
         return
     try:
         deleted = backend.delete_matching_dashboard_records("pedagio", rows)
     except Exception as exc:
-        st.error("Nao foi possivel apagar a ultima importacao.")
+        st.error("Não foi possível apagar a última importação.")
         st.exception(exc)
         return
     _clear_pedagio_last_import()
     _reset_dataset_editor("cad_ped_table")
     clear_cached_reads()
-    st.success(f"{deleted} lancamento(s) apagado(s).")
+    st.success(f"{deleted} lançamento(s) apagado(s).")
     st.rerun()
 
 
@@ -9011,7 +9027,7 @@ def _render_km_sheet_import() -> None:
         try:
             raw_df = _read_uploaded_sheet(uploaded, KM_SHEET_ALIASES)
         except Exception as exc:
-            st.error("Nao foi possivel ler a planilha. Envie um arquivo .xlsx ou .csv.")
+            st.error("Não foi possível ler a planilha. Envie um arquivo .xlsx ou .csv.")
             st.exception(exc)
             return
 
@@ -9024,13 +9040,17 @@ def _render_km_sheet_import() -> None:
                 st.write(f"...mais {len(errors) - 8} erro(s).")
             return
         if not rows:
-            st.warning("Nenhuma linha valida encontrada na planilha.")
+            st.warning("Nenhuma linha válida encontrada na planilha.")
             return
 
-        substituir = st.checkbox("Substituir KM se ja existir o mesmo mes e placa", value=True, key="cad_km_import_replace")
+        substituir = st.checkbox("Substituir KM se já existir o mesmo mês e placa", value=True, key="cad_km_import_replace")
         preview = pd.DataFrame(rows)
         st.success(f"{len(rows)} registro(s) prontos para importar.")
-        st.dataframe(preview[["Mes", "PLACA", "Km Rodados"]], width="stretch", hide_index=True)
+        st.dataframe(
+            preview[["Mes", "PLACA", "Km Rodados"]].rename(columns={"Mes": "Mês", "PLACA": "Placa"}),
+            width="stretch",
+            hide_index=True,
+        )
         if st.button("Importar KM mensal", type="primary", width="stretch", key="cad_km_import_confirm"):
             skipped_rows = 0
             try:
@@ -9050,8 +9070,8 @@ def _render_km_sheet_import() -> None:
                         )
             except Exception as exc:
                 st.error(
-                    "A importacao foi cancelada sem salvar um lote incompleto. "
-                    "Tente novamente; os registros ja existentes nao serao duplicados."
+                    "A importação foi cancelada sem salvar um lote incompleto. "
+                    "Tente novamente; os registros já existentes não serão duplicados."
                 )
                 st.exception(exc)
                 return
@@ -9062,7 +9082,7 @@ def _render_km_sheet_import() -> None:
             else:
                 st.success(
                     f"{len(imported_rows)} registro(s) de KM novo(s) importado(s) e "
-                    f"{skipped_rows} ja existente(s) mantido(s)."
+                    f"{skipped_rows} já existente(s) mantido(s)."
                 )
             st.rerun()
 
@@ -9075,12 +9095,12 @@ def _clear_aluguel_last_import() -> None:
 def _undo_aluguel_last_import() -> None:
     rows = st.session_state.get("cad_aluguel_last_import_rows") or []
     if not rows:
-        st.warning("Nao ha importacao recente para apagar.")
+        st.warning("Não há importação recente para apagar.")
         return
     try:
         deleted = backend.delete_matching_dashboard_records("aluguel_veiculos", rows)
     except Exception as exc:
-        st.error("Nao foi possivel apagar a ultima importacao de alugueis.")
+        st.error("Não foi possível apagar a última importação de aluguéis.")
         st.exception(exc)
         return
     _clear_aluguel_last_import()
@@ -9091,7 +9111,7 @@ def _undo_aluguel_last_import() -> None:
 
 
 def _load_aluguel_periods_for_export() -> pd.DataFrame:
-    """Reune as mensalidades no periodo original para exportacao."""
+    """Reúne as mensalidades no período original para exportação."""
     df = backend.load_aluguel_veiculos().copy()
     if df.empty:
         return df
@@ -9114,17 +9134,17 @@ def _render_aluguel_sheet_import() -> None:
     last_rows = st.session_state.get("cad_aluguel_last_import_rows") or []
     if last_rows:
         last_count = st.session_state.get("cad_aluguel_last_import_count", len(last_rows))
-        st.warning(f"Ultima importacao por planilha: {last_count} aluguel(is) de veiculo(s).")
+        st.warning(f"Última importação por planilha: {last_count} aluguel(is) de veículo(s).")
         undo_col, clear_col = st.columns(2)
         with undo_col:
-            if st.button("Apagar ultima importacao", type="primary", width="stretch", key="cad_aluguel_undo_import"):
+            if st.button("Apagar última importação", type="primary", width="stretch", key="cad_aluguel_undo_import"):
                 _undo_aluguel_last_import()
         with clear_col:
-            if st.button("Manter importacao", width="stretch", key="cad_aluguel_keep_import"):
+            if st.button("Manter importação", width="stretch", key="cad_aluguel_keep_import"):
                 _clear_aluguel_last_import()
                 st.rerun()
 
-    with st.expander("Adicionar aluguel de veiculos por planilha", expanded=False):
+    with st.expander("Adicionar aluguel de veículos por planilha", expanded=False):
         example_start = date.today()
         _render_sheet_downloads(
             _load_aluguel_periods_for_export,
@@ -9154,7 +9174,7 @@ def _render_aluguel_sheet_import() -> None:
         try:
             raw_df = _read_uploaded_sheet(uploaded, ALUGUEL_VEICULOS_SHEET_ALIASES)
         except Exception as exc:
-            st.error("Nao foi possivel ler a planilha. Envie um arquivo .xlsx ou .csv.")
+            st.error("Não foi possível ler a planilha. Envie um arquivo .xlsx ou .csv.")
             st.exception(exc)
             return
         rows, errors = _aluguel_veiculos_rows_from_sheet(raw_df)
@@ -9166,17 +9186,19 @@ def _render_aluguel_sheet_import() -> None:
                 st.write(f"...mais {len(errors) - 8} erro(s).")
             return
         if not rows:
-            st.warning("Nenhuma linha valida encontrada na planilha.")
+            st.warning("Nenhuma linha válida encontrada na planilha.")
             return
         preview = pd.DataFrame(rows)
         st.dataframe(
-            preview[["Inicio", "Fim", "Data", "Mes", "PLACA", "Fornecedor", "Custo", "Observacao"]],
+            preview[["Inicio", "Fim", "Data", "Mes", "PLACA", "Fornecedor", "Custo", "Observacao"]].rename(
+                columns={"Inicio": "Início", "Mes": "Mês", "PLACA": "Placa", "Observacao": "Observação"}
+            ),
             width="stretch",
             hide_index=True,
         )
         st.caption(
             f"A planilha gerou {len(rows)} mensalidade(s). O VALOR MENSAL de cada linha foi repetido "
-            "em todos os meses de INICIO a FIM."
+            "em todos os meses de INÍCIO a FIM."
         )
         if st.button(
             f"Importar {len(rows)} mensalidade(s)",
@@ -9193,8 +9215,8 @@ def _render_aluguel_sheet_import() -> None:
                     )
             except Exception as exc:
                 st.error(
-                    "A importacao foi cancelada sem salvar um lote incompleto. "
-                    "Tente novamente; os registros existentes nao serao duplicados."
+                    "A importação foi cancelada sem salvar um lote incompleto. "
+                    "Tente novamente; os registros existentes não serão duplicados."
                 )
                 st.exception(exc)
                 return
@@ -9207,7 +9229,7 @@ def _render_aluguel_sheet_import() -> None:
             clear_cached_reads()
             st.success(
                 f"{len(imported_rows)} mensalidade(s) nova(s) importada(s) e "
-                f"{skipped_rows} ja existente(s) mantido(s)."
+                f"{skipped_rows} já existente(s) mantido(s)."
             )
             st.rerun()
 
@@ -9217,30 +9239,30 @@ def _render_pedagio_sheet_import(plate_map: dict[str, str]) -> None:
     last_rows = st.session_state.get("cad_ped_last_import_rows") or []
     if last_rows:
         last_count = st.session_state.get("cad_ped_last_import_count", len(last_rows))
-        st.warning(f"Ultima importacao por planilha: {last_count} lancamento(s).")
+        st.warning(f"Última importação por planilha: {last_count} lançamento(s).")
         undo_col, clear_col = st.columns([1, 1])
         with undo_col:
-            if st.button("Apagar ultima importacao", type="primary", width="stretch", key="cad_ped_undo_import"):
+            if st.button("Apagar última importação", type="primary", width="stretch", key="cad_ped_undo_import"):
                 _undo_pedagio_last_import()
         with clear_col:
-            if st.button("Manter importacao", width="stretch", key="cad_ped_keep_import"):
+            if st.button("Manter importação", width="stretch", key="cad_ped_keep_import"):
                 _clear_pedagio_last_import()
                 st.rerun()
 
-    with st.expander("Adicionar pedagio/extras por planilha", expanded=False):
+    with st.expander("Adicionar pedágio/extras por planilha", expanded=False):
         _render_sheet_downloads(
             backend.load_pedagio,
             [("Data", "DATA"), ("PLACA", "PLACA"), ("Tipo", "TIPO"), ("Custo", "CUSTO"), ("Mes", "MES")],
             {
                 "DATA": date.today(),
                 "PLACA": "ABC1D23",
-                "TIPO": "Pedagio",
+                "TIPO": "Pedágio",
                 "CUSTO": 35.9,
                 "MES": date.today().strftime("%Y-%m"),
             },
             key_prefix="cad_ped_sheet",
             file_prefix="pedagio_extras",
-            sheet_name="Pedagio e extras",
+            sheet_name="Pedágio e Extras",
         )
         uploaded = st.file_uploader("Enviar planilha", type=["xlsx", "csv"], key="cad_ped_upload")
         if uploaded is None:
@@ -9249,7 +9271,7 @@ def _render_pedagio_sheet_import(plate_map: dict[str, str]) -> None:
         try:
             raw_df = _read_uploaded_sheet(uploaded, PEDAGIO_SHEET_ALIASES)
         except Exception as exc:
-            st.error("Nao foi possivel ler a planilha. Envie um arquivo .xlsx ou .csv.")
+            st.error("Não foi possível ler a planilha. Envie um arquivo .xlsx ou .csv.")
             st.exception(exc)
             return
 
@@ -9266,8 +9288,12 @@ def _render_pedagio_sheet_import(plate_map: dict[str, str]) -> None:
             return
 
         preview = pd.DataFrame(rows)
-        st.dataframe(preview[["Mes", "PLACA", "Categoria", "Tipo", "Custo"]], width="stretch", hide_index=True)
-        if st.button(f"Importar {len(rows)} lancamentos", type="primary", width="stretch", key="cad_ped_import_sheet"):
+        st.dataframe(
+            preview[["Mes", "PLACA", "Categoria", "Tipo", "Custo"]].rename(columns={"Mes": "Mês", "PLACA": "Placa"}),
+            width="stretch",
+            hide_index=True,
+        )
+        if st.button(f"Importar {len(rows)} lançamentos", type="primary", width="stretch", key="cad_ped_import_sheet"):
             imported_rows: list[dict] = []
             skipped_rows = 0
             try:
@@ -9279,8 +9305,8 @@ def _render_pedagio_sheet_import(plate_map: dict[str, str]) -> None:
                     )
             except Exception as exc:
                 st.error(
-                    "A importacao foi cancelada sem salvar um lote incompleto. "
-                    "Tente novamente; os registros ja existentes nao serao duplicados."
+                    "A importação foi cancelada sem salvar um lote incompleto. "
+                    "Tente novamente; os registros já existentes não serão duplicados."
                 )
                 st.exception(exc)
                 return
@@ -9292,8 +9318,8 @@ def _render_pedagio_sheet_import(plate_map: dict[str, str]) -> None:
             _reset_dataset_editor("cad_ped_table")
             clear_cached_reads()
             st.success(
-                f"{len(imported_rows)} lancamento(s) novo(s) importado(s) e "
-                f"{skipped_rows} ja existente(s) mantido(s)."
+                f"{len(imported_rows)} lançamento(s) novo(s) importado(s) e "
+                f"{skipped_rows} já existente(s) mantido(s)."
             )
             st.rerun()
 
@@ -9304,12 +9330,12 @@ def _render_seguro_period_adjustment() -> None:
         try:
             df = backend.load_pedagio()
         except Exception as exc:
-            st.error("Nao foi possivel carregar os seguros para prever a alteracao.")
+            st.error("Não foi possível carregar os seguros para prever a alteração.")
             st.exception(exc)
             return
 
         if df.empty or "Tipo" not in df.columns:
-            st.info("Nenhum lancamento de pedagio/extra encontrado.")
+            st.info("Nenhum lançamento de pedágio/extra encontrado.")
             return
 
         with st.expander("Definir valor de seguro por placa", expanded=False):
@@ -9348,7 +9374,7 @@ def _render_seguro_period_adjustment() -> None:
             if not editor_rows:
                 st.info("Cadastre placas antes de definir os seguros.")
             else:
-                st.caption("Preencha o valor de seguro de cada placa. Ao salvar, os seguros antigos de 10/2025 a 10/2026 serao substituidos por estes valores.")
+                st.caption("Preencha o valor de seguro de cada placa. Ao salvar, os seguros antigos de 10/2025 a 10/2026 serão substituídos por estes valores.")
                 edited = st.data_editor(
                     pd.DataFrame(editor_rows),
                     width="stretch",
@@ -9362,7 +9388,7 @@ def _render_seguro_period_adjustment() -> None:
                 total_editor = float(pd.to_numeric(edited.get("Valor seguro"), errors="coerce").fillna(0).sum())
                 st.info(f"Total informado por placa: {fmt_brl(total_editor)}.")
                 confirm_values = st.checkbox(
-                    "Confirmo que quero substituir os seguros do periodo pelos valores acima, por placa.",
+                    "Confirmo que quero substituir os seguros do período pelos valores acima, por placa.",
                     key="cad_ped_seguro_placa_confirm",
                 )
                 if st.button(
@@ -9381,13 +9407,13 @@ def _render_seguro_period_adjustment() -> None:
                     try:
                         result = backend.replace_pedagio_seguros_por_placa(records, "2025-10", "2026-10")
                     except Exception as exc:
-                        st.error("Nao foi possivel salvar os seguros por placa no Neon.")
+                        st.error("Não foi possível salvar os seguros por placa no Neon.")
                         st.exception(exc)
                         return
                     clear_cached_reads()
                     _reset_dataset_editor("cad_ped_table")
                     st.session_state["cad_ped_table_last_success"] = (
-                        f"Seguros recriados por placa: {result.get('plates', 0)} placa(s), {result.get('inserted', 0)} lancamento(s)."
+                        f"Seguros recriados por placa: {result.get('plates', 0)} placa(s), {result.get('inserted', 0)} lançamento(s)."
                     )
                     st.rerun()
 
@@ -9395,13 +9421,13 @@ def _render_seguro_period_adjustment() -> None:
         month_options = unique_filter_options(df["Mes"].astype("string").fillna("").tolist()) if "Mes" in df.columns else []
         default_types = ["Seguro"] if "Seguro" in type_options else []
         selected_types = st.multiselect(
-            "Tipo atual dos lancamentos que devem virar Seguro",
+            "Tipo atual dos lançamentos que devem virar seguro",
             type_options,
             default=default_types,
             key="cad_ped_seguro_period_source_types",
         )
         selected_months = st.multiselect(
-            "Meses atuais desses lancamentos",
+            "Meses atuais desses lançamentos",
             month_options,
             default=[],
             placeholder="Todos os meses",
@@ -9424,14 +9450,14 @@ def _render_seguro_period_adjustment() -> None:
         )
         total_value = float(pd.to_numeric(candidates.get("Custo"), errors="coerce").sum()) if total and "Custo" in candidates.columns else 0.0
         st.info(
-            f"Selecao atual: {total} lancamento(s), {plate_count} placa(s), total {fmt_brl(total_value)}. "
-            "Ao confirmar, eles serao somados por placa e mensalizados de 2025-10 ate 2026-10 sem misturar valores entre placas."
+            f"Seleção atual: {total} lançamento(s), {plate_count} placa(s), total {fmt_brl(total_value)}. "
+            "Ao confirmar, eles serão somados por placa e mensalizados de 2025-10 até 2026-10 sem misturar valores entre placas."
         )
         if total:
             preview_columns = [column for column in ["Data", "Mes", "PLACA", "Categoria", "Tipo", "Custo"] if column in candidates.columns]
             st.dataframe(candidates[preview_columns].head(30), width="stretch", hide_index=True)
         confirm = st.checkbox(
-            "Confirmo que a selecao acima deve virar Seguro mensal de 2025-10 a 2026-10, calculado por placa.",
+            "Confirmo que a seleção acima deve virar seguro mensal de 2025-10 a 2026-10, calculado por placa.",
             key="cad_ped_seguro_period_confirm",
         )
         if st.button(
@@ -9449,41 +9475,41 @@ def _render_seguro_period_adjustment() -> None:
                     source_meses=selected_months,
                 )
             except Exception as exc:
-                st.error("Nao foi possivel ajustar os seguros no Neon.")
+                st.error("Não foi possível ajustar os seguros no Neon.")
                 st.exception(exc)
                 return
             clear_cached_reads()
             _reset_dataset_editor("cad_ped_table")
             st.session_state["cad_ped_table_last_success"] = (
-                f"{result.get('deleted', 0)} lancamento(s) original(is) de {result.get('plates', 0)} placa(s) viraram {result.get('updated', 0)} lancamento(s) mensais de seguro por placa."
+                f"{result.get('deleted', 0)} lançamento(s) original(is) de {result.get('plates', 0)} placa(s) viraram {result.get('updated', 0)} lançamento(s) mensais de seguro por placa."
             )
             st.rerun()
 
 
 @st.fragment
 def _render_pedagio_reset_all() -> None:
-    with st.expander("Zerar todo Pedagio/Extras", expanded=False):
-        st.warning("Essa acao apaga todos os lancamentos de pedagio, extras, taxi, IPVA e seguros. Use somente se for recadastrar tudo manualmente.")
+    with st.expander("Zerar todo Pedágio/Extras", expanded=False):
+        st.warning("Essa ação apaga todos os lançamentos de pedágio, extras, táxi, IPVA e seguros. Use somente se for recadastrar tudo manualmente.")
         count = None
         try:
             df_preview = backend.load_pedagio()
             count = int(df_preview.shape[0])
         except Exception as exc:
-            st.caption(f"Nao foi possivel contar os lancamentos antes de apagar: {exc}")
+            st.caption(f"Não foi possível contar os lançamentos antes de apagar: {exc}")
         if count is not None:
-            st.caption(f"Total atual: {count} lancamento(s).")
-        confirmar = st.checkbox("Confirmo que quero apagar toda a tabela de Pedagio/Extras.", key="cad_ped_reset_all_confirm")
-        if st.button("Zerar todo Pedagio/Extras", type="primary", width="stretch", disabled=not confirmar, key="cad_ped_reset_all_button"):
+            st.caption(f"Total atual: {count} lançamento(s).")
+        confirmar = st.checkbox("Confirmo que quero apagar toda a tabela de Pedágio/Extras.", key="cad_ped_reset_all_confirm")
+        if st.button("Zerar todo Pedágio/Extras", type="primary", width="stretch", disabled=not confirmar, key="cad_ped_reset_all_button"):
             try:
                 deleted = backend.delete_dashboard_all("pedagio")
             except Exception as exc:
-                st.error("Nao foi possivel zerar Pedagio/Extras no Neon.")
+                st.error("Não foi possível zerar Pedágio/Extras no Neon.")
                 st.exception(exc)
                 return
             _clear_pedagio_last_import()
             _reset_dataset_editor("cad_ped_table")
             clear_cached_reads()
-            st.success(f"{deleted} lancamento(s) de Pedagio/Extras apagado(s).")
+            st.success(f"{deleted} lançamento(s) de Pedágio/Extras apagado(s).")
             st.rerun()
 
 
@@ -9495,7 +9521,7 @@ def render_cadastro() -> None:
             st.session_state["cadastro_active_tab"] = "Placas"
         with st.container(key="cadastro_tabs"):
             active_tab = st.radio(
-                "Area de cadastro",
+                "Área de cadastro",
                 CADASTRO_TABS,
                 horizontal=True,
                 label_visibility="collapsed",
@@ -9762,7 +9788,7 @@ def render_cadastro() -> None:
                     ["Mes", "PLACA"],
                     "cad_emp_horas_table",
                     {
-                        "Mes": st.column_config.TextColumn("Mes"),
+                        "Mes": st.column_config.TextColumn("Mês"),
                         "PLACA": st.column_config.TextColumn("Empilhadeira"),
                         "Horas": _number_col("Horas"),
                     },
@@ -9850,10 +9876,10 @@ def render_cadastro() -> None:
                 "cad_comb_table",
                 {
                     "Data": _date_col(),
-                    "Mes": st.column_config.TextColumn("Mes"),
+                    "Mes": st.column_config.TextColumn("Mês"),
                     "PLACA": st.column_config.TextColumn("Placa"),
                     "Categoria": st.column_config.SelectboxColumn("Categoria", options=CATEGORY_OPTIONS, required=True),
-                    "Combustivel": st.column_config.TextColumn("Combustivel"),
+                    "Combustivel": st.column_config.TextColumn("Combustível"),
                     "POSTOS": st.column_config.TextColumn("Posto"),
                     "Litros": _number_col("Litros", step=0.01, format="%.2f"),
                     "Custo": _money_col("Custo"),
@@ -9892,7 +9918,7 @@ def render_cadastro() -> None:
                 ["Mes", "PLACA"],
                 "cad_km_table",
                 {
-                    "Mes": st.column_config.TextColumn("Mes"),
+                    "Mes": st.column_config.TextColumn("Mês"),
                     "PLACA": st.column_config.TextColumn("Placa"),
                     "Km Rodados": _number_col("KM rodados"),
                 },
@@ -9934,7 +9960,7 @@ def render_cadastro() -> None:
                 "cad_manu_table",
                 {
                     "Data": _date_col(),
-                    "Mes": st.column_config.TextColumn("Mes"),
+                    "Mes": st.column_config.TextColumn("Mês"),
                     "PLACA": st.column_config.TextColumn("Placa"),
                     "Categoria": st.column_config.SelectboxColumn("Categoria", options=CATEGORY_OPTIONS, required=True),
                     "OFICINA": st.column_config.TextColumn("Oficina"),
@@ -9979,7 +10005,7 @@ def render_cadastro() -> None:
                 "cad_pneu_table",
                 {
                     "Data": _date_col(),
-                    "Mes": st.column_config.TextColumn("Mes"),
+                    "Mes": st.column_config.TextColumn("Mês"),
                     "PLACA": st.column_config.TextColumn("Placa"),
                     "Categoria": st.column_config.SelectboxColumn("Categoria", options=CATEGORY_OPTIONS),
                     "Fornecedor": st.column_config.TextColumn("Fornecedor"),
@@ -10033,7 +10059,7 @@ def render_cadastro() -> None:
                 "cad_hotel_table",
                 {
                     "Data": _date_col(),
-                    "Mes": st.column_config.TextColumn("Mes"),
+                    "Mes": st.column_config.TextColumn("Mês"),
                     "Cidade": st.column_config.TextColumn("Cidade"),
                     "Hotel": st.column_config.TextColumn("Hotel/Pousada"),
                     "Tipo": st.column_config.TextColumn("Tipo"),
@@ -10089,7 +10115,7 @@ def render_cadastro() -> None:
                 "cad_peso_table",
                 {
                     "Data": _date_col(),
-                    "Mes": st.column_config.TextColumn("Mes"),
+                    "Mes": st.column_config.TextColumn("Mês"),
                     "Cidade": st.column_config.TextColumn("Cidade"),
                     "Rota": st.column_config.TextColumn("Rota"),
                     "PLACA": st.column_config.TextColumn("Placa"),
@@ -10144,7 +10170,7 @@ def render_cadastro() -> None:
                 "cad_ped_table",
                 {
                     "Data": _date_col(),
-                    "Mes": st.column_config.TextColumn("Mes"),
+                    "Mes": st.column_config.TextColumn("Mês"),
                     "PLACA": st.column_config.TextColumn("Placa"),
                     "Categoria": st.column_config.SelectboxColumn("Categoria", options=CATEGORY_OPTIONS, required=True),
                     "Tipo": st.column_config.SelectboxColumn("Tipo", options=PEDAGIO_TIPO_OPTIONS, required=True),
