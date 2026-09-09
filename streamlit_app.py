@@ -41,7 +41,8 @@ _backend_features_ready = all(
 _backend_aluguel_period_ready = {"Inicio", "Fim"}.issubset(
     set(getattr(backend, "_ALUGUEL_VEICULOS_COLUMNS", []))
 )
-if not _backend_features_ready or not _backend_aluguel_period_ready:
+_backend_aluguel_rateio_ready = getattr(backend, "BACKEND_BUILD_VERSION", "") == "aluguel-rateio-meses-v1"
+if not _backend_features_ready or not _backend_aluguel_period_ready or not _backend_aluguel_rateio_ready:
     backend = importlib.reload(backend)
 
 
@@ -51,7 +52,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-aluguel-veiculos-periodo-v2"
+APP_VERSION = "deploy-aluguel-veiculos-rateio-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -6278,22 +6279,11 @@ def _entry_month(value: date) -> str:
 
 
 def _aluguel_cycle_dates(inicio: date, fim: date) -> list[date]:
-    """Retorna o inicio de cada mensalidade contida no periodo da locacao."""
+    """Retorna uma data representativa de cada mes tocado pela locacao."""
     if not inicio or not fim or fim < inicio:
         return []
-    cycles: list[date] = []
-    offset = 0
-    while True:
-        month_index = inicio.month - 1 + offset
-        year = inicio.year + month_index // 12
-        month = month_index % 12 + 1
-        day = min(inicio.day, calendar.monthrange(year, month)[1])
-        cycle_date = date(year, month, day)
-        if cycle_date > fim:
-            break
-        cycles.append(cycle_date)
-        offset += 1
-    return cycles
+    months = pd.period_range(start=inicio, end=fim, freq="M")
+    return [max(inicio, month.start_time.date()) for month in months]
 
 
 def _aluguel_one_cycle_end(inicio: date) -> date:
@@ -6309,9 +6299,11 @@ def _aluguel_period_rows(
     fim: date,
     placa: str,
     fornecedor: str,
-    custo_mensal: float,
+    valor_periodo: float,
     observacao: str,
 ) -> list[dict]:
+    cycle_dates = _aluguel_cycle_dates(inicio, fim)
+    divided_values = backend._split_currency_total(valor_periodo, len(cycle_dates))
     return [
         {
             "Data": cycle_date,
@@ -6320,11 +6312,11 @@ def _aluguel_period_rows(
             "Fim": fim,
             "PLACA": placa,
             "Fornecedor": fornecedor,
-            "Custo": custo_mensal,
+            "Custo": divided_value,
             "Observacao": observacao,
             "Categoria": "Vex",
         }
-        for cycle_date in _aluguel_cycle_dates(inicio, fim)
+        for cycle_date, divided_value in zip(cycle_dates, divided_values)
     ]
 
 
@@ -7330,7 +7322,7 @@ ALUGUEL_VEICULOS_SHEET_ALIASES = {
     "INICIO": ["INICIO", "DATAINICIO", "DE", "DATA", "DT"],
     "FIM": ["FIM", "DATAFIM", "ATE"],
     "PLACA": ["PLACA", "VEICULO", "VEICULOPLACA", "PLACAVEICULO"],
-    "CUSTO": ["CUSTO", "VALOR", "VALORMENSAL", "ALUGUEL"],
+    "CUSTO": ["CUSTO", "VALOR", "VALORTOTAL", "VALORMENSAL", "ALUGUEL"],
 }
 
 HOTEIS_SHEET_ALIASES = {
@@ -7774,7 +7766,7 @@ def _aluguel_veiculos_rows_from_sheet(df: pd.DataFrame) -> tuple[list[dict], lis
     inicio_column = resolve("INICIO", "DATAINICIO", "DE", "DATA", "DT")
     fim_column = resolve("FIM", "DATAFIM", "ATE")
     placa_column = resolve("PLACA", "VEICULO", "VEICULOPLACA", "PLACAVEICULO")
-    custo_column = resolve("CUSTO", "VALOR", "VALORMENSAL", "ALUGUEL")
+    custo_column = resolve("CUSTO", "VALOR", "VALORTOTAL", "VALORMENSAL", "ALUGUEL")
     fornecedor_column = resolve("FORNECEDOR", "LOCADORA", "EMPRESA", "FORNECEDORLOCADORA")
     observacao_column = resolve("OBSERVACAO", "OBS", "DESCRICAO")
     missing = [
@@ -7783,7 +7775,7 @@ def _aluguel_veiculos_rows_from_sheet(df: pd.DataFrame) -> tuple[list[dict], lis
             (inicio_column, "INICIO"),
             (fim_column, "FIM"),
             (placa_column, "PLACA/VEICULO"),
-            (custo_column, "VALOR MENSAL"),
+            (custo_column, "VALOR TOTAL"),
         )
         if column is None
     ]
@@ -7809,7 +7801,7 @@ def _aluguel_veiculos_rows_from_sheet(df: pd.DataFrame) -> tuple[list[dict], lis
         if not placa:
             missing_row.append("PLACA/VEICULO")
         if custo is None:
-            missing_row.append("VALOR MENSAL")
+            missing_row.append("VALOR TOTAL")
         if missing_row:
             errors.append(f"Linha {idx + 2}: preencher {', '.join(missing_row)}.")
             continue
@@ -9093,7 +9085,7 @@ def _undo_aluguel_last_import() -> None:
 
 
 def _load_aluguel_periods_for_export() -> pd.DataFrame:
-    """Reune mensalidades do mesmo periodo para nao multiplica-las ao reimportar."""
+    """Reune o rateio mensal novamente no valor total de cada periodo."""
     df = backend.load_aluguel_veiculos().copy()
     if df.empty:
         return df
@@ -9101,10 +9093,14 @@ def _load_aluguel_periods_for_export() -> pd.DataFrame:
     for column in ("Inicio", "Fim"):
         values = pd.to_datetime(df.get(column), errors="coerce") if column in df else data.copy()
         df[column] = values.fillna(data)
-    inicio = pd.to_datetime(df["Inicio"], errors="coerce")
-    df["Mes"] = inicio.dt.strftime("%Y-%m").astype("string")
-    contract_columns = ["Inicio", "Fim", "PLACA", "Fornecedor", "Custo", "Observacao"]
-    return df.drop_duplicates(subset=contract_columns, keep="first").reset_index(drop=True)
+    contract_columns = ["Inicio", "Fim", "PLACA", "Fornecedor", "Observacao"]
+    for column in ("PLACA", "Fornecedor", "Observacao"):
+        df[column] = df.get(column, pd.Series(index=df.index, dtype="string")).astype("string").fillna("")
+    df["Custo"] = pd.to_numeric(df.get("Custo"), errors="coerce").fillna(0.0)
+    periods = df.groupby(contract_columns, dropna=False, as_index=False)["Custo"].sum()
+    inicio = pd.to_datetime(periods["Inicio"], errors="coerce")
+    periods["Mes"] = inicio.dt.strftime("%Y-%m").astype("string")
+    return periods.reset_index(drop=True)
 
 
 @st.fragment
@@ -9131,7 +9127,7 @@ def _render_aluguel_sheet_import() -> None:
                 ("Fim", "FIM"),
                 ("PLACA", "PLACA/VEICULO"),
                 ("Fornecedor", "FORNECEDOR/LOCADORA"),
-                ("Custo", "VALOR MENSAL"),
+                ("Custo", "VALOR TOTAL"),
                 ("Observacao", "OBSERVACAO"),
             ],
             {
@@ -9139,7 +9135,7 @@ def _render_aluguel_sheet_import() -> None:
                 "FIM": _aluguel_one_cycle_end(example_start),
                 "PLACA/VEICULO": "ABC1D23",
                 "FORNECEDOR/LOCADORA": "LOCADORA EXEMPLO",
-                "VALOR MENSAL": 2500.0,
+                "VALOR TOTAL": 2500.0,
                 "OBSERVACAO": "Aluguel mensal",
             },
             key_prefix="cad_aluguel_sheet",
@@ -9173,7 +9169,8 @@ def _render_aluguel_sheet_import() -> None:
             hide_index=True,
         )
         st.caption(
-            f"A planilha gerou {len(rows)} mensalidade(s). Cada linha sera distribuida pelos ciclos entre INICIO e FIM."
+            f"A planilha gerou {len(rows)} parcela(s) mensal(is). O VALOR TOTAL de cada linha foi dividido "
+            "igualmente entre todos os meses de INICIO a FIM."
         )
         if st.button(
             f"Importar {len(rows)} mensalidade(s)",
@@ -10199,7 +10196,7 @@ def render_cadastro() -> None:
                     )
                 with c3:
                     custo = st.number_input(
-                        "Valor mensal",
+                        "Valor total do período",
                         min_value=0.0,
                         step=100.0,
                         format="%.2f",
@@ -10212,11 +10209,17 @@ def render_cadastro() -> None:
                     )
                 cycles = _aluguel_cycle_dates(inicio, fim)
                 if cycles:
-                    st.caption(
-                        f"{len(cycles)} mensalidade(s) de {fmt_brl(custo)} = {fmt_brl(custo * len(cycles))}. "
-                        "Categoria Vex."
+                    divided_values = backend._split_currency_total(custo, len(cycles))
+                    monthly_text = (
+                        f"{fmt_brl(divided_values[0])} por mês"
+                        if min(divided_values) == max(divided_values)
+                        else f"parcelas de {fmt_brl(min(divided_values))} a {fmt_brl(max(divided_values))}"
                     )
-                submitted = st.form_submit_button("Salvar mensalidades", type="primary", width="stretch")
+                    st.caption(
+                        f"{len(cycles)} mês(es) • Total {fmt_brl(custo)} • "
+                        f"{monthly_text} • Categoria Vex."
+                    )
+                submitted = st.form_submit_button("Salvar rateio mensal", type="primary", width="stretch")
                 if submitted:
                     if not placa:
                         st.warning("Preencha a placa/veículo.")
@@ -10225,7 +10228,7 @@ def render_cadastro() -> None:
                     else:
                         rows = _aluguel_period_rows(inicio, fim, placa, fornecedor, custo, observacao)
                         try:
-                            with st.spinner("Salvando todas as mensalidades do período..."):
+                            with st.spinner("Salvando o rateio do período..."):
                                 imported_rows, skipped_rows = backend.append_missing_dashboard_records(
                                     "aluguel_veiculos",
                                     rows,
@@ -10239,7 +10242,7 @@ def render_cadastro() -> None:
                             _clear_table_filter_state("cad_aluguel_table")
                             _reset_dataset_editor("cad_aluguel_table")
                             st.session_state["cad_aluguel_table_last_success"] = (
-                                f"{len(imported_rows)} mensalidade(s) salva(s); "
+                                f"{len(imported_rows)} parcela(s) mensal(is) salva(s); "
                                 f"{skipped_rows} já existente(s) mantida(s)."
                             )
                             st.rerun()
@@ -10257,7 +10260,7 @@ def render_cadastro() -> None:
                     "Fim": _date_col("Fim da locação"),
                     "PLACA": st.column_config.TextColumn("Placa/veículo"),
                     "Fornecedor": st.column_config.TextColumn("Fornecedor/locadora"),
-                    "Custo": _money_col("Custo do aluguel"),
+                    "Custo": _money_col("Parcela mensal rateada"),
                     "Observacao": st.column_config.TextColumn("Observação"),
                 },
                 ["Mes", "Inicio", "Fim", "PLACA", "Fornecedor", "Observacao"],
