@@ -120,7 +120,17 @@ _HOTEIS_COLUMNS = [
     "Categoria",
 ]
 _PEDAGIO_COLUMNS = ["PLACA", "Tipo", "Custo", "Mes", "Data", "Categoria"]
-_ALUGUEL_VEICULOS_COLUMNS = ["Data", "Mes", "PLACA", "Fornecedor", "Custo", "Observacao", "Categoria"]
+_ALUGUEL_VEICULOS_COLUMNS = [
+    "Data",
+    "Mes",
+    "Inicio",
+    "Fim",
+    "PLACA",
+    "Fornecedor",
+    "Custo",
+    "Observacao",
+    "Categoria",
+]
 _PESO_COLUMNS = ["Data", "Mes", "Cidade", "Rota", "Peso", "Valor", "PLACA", "Categoria"]
 _RODAGEM_ROTA_COLUMNS = ["Mes", "Rota", "PLACA", "Km Rodados"]
 _PLACAS_COLUMNS = ["PLACA", "Categoria", "Diaria"]
@@ -146,6 +156,8 @@ _DATASET_COLUMNS = {
 }
 _COLUMN_SQL_TYPES = {
     "Data": "TIMESTAMP",
+    "Inicio": "TIMESTAMP",
+    "Fim": "TIMESTAMP",
     "Mes": "TEXT",
     "Km Rodados": "DOUBLE PRECISION",
     "Horas": "DOUBLE PRECISION",
@@ -2609,15 +2621,22 @@ def load_aluguel_veiculos() -> pd.DataFrame:
         if cached is not None and cache.get("mtime") == version:
             return cached.copy(deep=False)
 
-        df = _read_database_table("aluguel_veiculos", _ALUGUEL_VEICULOS_COLUMNS, date_columns=["Data"])
+        df = _read_database_table(
+            "aluguel_veiculos",
+            _ALUGUEL_VEICULOS_COLUMNS,
+            date_columns=["Data", "Inicio", "Fim"],
+        )
         df = _finalize_common(
             df,
-            date_columns=["Data"],
+            date_columns=["Data", "Inicio", "Fim"],
             numeric_columns=["Custo"],
             text_columns=["Fornecedor", "Observacao"],
             plate_columns=["PLACA"],
             default_category="Vex",
         )
+        if "Data" in df.columns:
+            for column in ("Inicio", "Fim"):
+                df[column] = df[column].fillna(df["Data"])
         df["Categoria"] = "Vex"
         cache["mtime"] = version
         cache["df"] = df.copy()
