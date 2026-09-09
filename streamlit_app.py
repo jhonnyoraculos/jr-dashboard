@@ -28,8 +28,8 @@ import app as backend
 
 # O Streamlit pode recarregar este arquivo sem reiniciar o processo Python.
 # Nesse intervalo, o modulo ``app`` pode continuar em memoria na versao anterior
-# ao deploy. Recarregue-o quando a tela nova depender da rodagem por rota.
-if not all(
+# ao deploy. Recarregue-o quando a tela depender de recursos ou colunas novas.
+_backend_features_ready = all(
     hasattr(backend, feature)
     for feature in (
         "load_rodagem_rota",
@@ -37,7 +37,11 @@ if not all(
         "upsert_dashboard_records",
         "append_missing_dashboard_records",
     )
-):
+)
+_backend_aluguel_period_ready = {"Inicio", "Fim"}.issubset(
+    set(getattr(backend, "_ALUGUEL_VEICULOS_COLUMNS", []))
+)
+if not _backend_features_ready or not _backend_aluguel_period_ready:
     backend = importlib.reload(backend)
 
 
@@ -47,7 +51,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-aluguel-veiculos-periodo-v1"
+APP_VERSION = "deploy-aluguel-veiculos-periodo-v2"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100

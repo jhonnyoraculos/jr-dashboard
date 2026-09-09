@@ -517,6 +517,21 @@ def _ensure_dataset_table(conn, dataset: str) -> None:
     for column in _DATASET_COLUMNS[dataset]:
         sql_type = _COLUMN_SQL_TYPES.get(column, "TEXT")
         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {_quote_identifier(column)} {sql_type}"))
+    if dataset == "aluguel_veiculos":
+        conn.execute(
+            text(
+                f"""
+                UPDATE {table}
+                SET "Inicio" = COALESCE("Inicio", "Data"),
+                    "Fim" = COALESCE(
+                        "Fim",
+                        COALESCE("Inicio", "Data") + INTERVAL '1 month' - INTERVAL '1 day'
+                    )
+                WHERE "Data" IS NOT NULL
+                  AND ("Inicio" IS NULL OR "Fim" IS NULL)
+                """
+            )
+        )
 
 
 def save_dashboard_record(dataset: str, row: dict, *, replace_keys: list[str] | None = None) -> str:
