@@ -45,6 +45,7 @@ DB_TABLES = {
     "pneus": "dashboard_pneus",
     "hoteis": "dashboard_hoteis",
     "pedagio": "dashboard_pedagio",
+    "aluguel_veiculos": "dashboard_aluguel_veiculos",
     "peso": "dashboard_peso",
     "rodagem_rota": "dashboard_rodagem_rota",
     "placas": "dashboard_placas",
@@ -57,6 +58,7 @@ _METADATA_CACHE_SECONDS = float(os.environ.get("JR_METADATA_CACHE_SECONDS", "30"
 _METADATA_CACHE = {"loaded": False, "loaded_at": 0.0, "values": {}, "lock": threading.Lock()}
 
 _PEDAGIO_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
+_ALUGUEL_VEICULOS_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
 _COMBUSTIVEL_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
 _COMBUSTIVEL_KM_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
 _EMPILHADEIRA_HORAS_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
@@ -81,6 +83,7 @@ _CACHE_MAP = {
     "pneus": _PNEUS_CACHE,
     "hoteis": _HOTEIS_CACHE,
     "pedagio": _PEDAGIO_CACHE,
+    "aluguel_veiculos": _ALUGUEL_VEICULOS_CACHE,
     "peso": _PESO_CACHE,
     "rodagem_rota": _RODAGEM_ROTA_CACHE,
     "placas": _PLACAS_CACHE,
@@ -117,6 +120,7 @@ _HOTEIS_COLUMNS = [
     "Categoria",
 ]
 _PEDAGIO_COLUMNS = ["PLACA", "Tipo", "Custo", "Mes", "Data", "Categoria"]
+_ALUGUEL_VEICULOS_COLUMNS = ["Data", "Mes", "PLACA", "Fornecedor", "Custo", "Observacao", "Categoria"]
 _PESO_COLUMNS = ["Data", "Mes", "Cidade", "Rota", "Peso", "Valor", "PLACA", "Categoria"]
 _RODAGEM_ROTA_COLUMNS = ["Mes", "Rota", "PLACA", "Km Rodados"]
 _PLACAS_COLUMNS = ["PLACA", "Categoria", "Diaria"]
@@ -134,6 +138,7 @@ _DATASET_COLUMNS = {
     "pneus": _PNEUS_COLUMNS,
     "hoteis": _HOTEIS_COLUMNS,
     "pedagio": _PEDAGIO_COLUMNS,
+    "aluguel_veiculos": _ALUGUEL_VEICULOS_COLUMNS,
     "peso": _PESO_COLUMNS,
     "rodagem_rota": _RODAGEM_ROTA_COLUMNS,
     "placas": _PLACAS_COLUMNS,
@@ -376,6 +381,7 @@ def _clear_dataset_cache(dataset: str) -> None:
         "manutencao",
         "pneus",
         "pedagio",
+        "aluguel_veiculos",
         "peso",
         "rodagem_rota",
     }:
@@ -397,7 +403,7 @@ def _clear_dataset_cache(dataset: str) -> None:
     elif dataset == "manutencao":
         targets = ["manutencao", "pneus"]
     elif dataset == "placas":
-        targets = ["combustivel", "combustivel_km", "empilhadeira_horas", "manutencao", "pneus", "pedagio", "peso", "rodagem_rota"]
+        targets = ["combustivel", "combustivel_km", "empilhadeira_horas", "manutencao", "pneus", "pedagio", "aluguel_veiculos", "peso", "rodagem_rota"]
     elif dataset in {"combustiveis", "postos"}:
         targets = ["combustivel"]
     else:
@@ -446,6 +452,8 @@ def _prepare_insert_row(dataset: str, row: dict) -> dict:
         prepared["Combustivel"] = _normalize_combustivel_value(prepared["Combustivel"])
     if "Categoria" in prepared:
         prepared["Categoria"] = _normalize_category_value(prepared["Categoria"])
+    if dataset == "aluguel_veiculos":
+        prepared["Categoria"] = "Vex"
     if "Diaria" in prepared:
         diaria = pd.to_numeric(pd.Series([prepared["Diaria"]]), errors="coerce").iloc[0]
         prepared["Diaria"] = max(float(diaria), 0.0) if pd.notna(diaria) else 0.0
@@ -1504,7 +1512,7 @@ def rename_plate(old_plate, new_plate, categoria: str, diaria: float | None = No
             diaria_value = float(stored_daily or 0.0)
         else:
             diaria_value = max(float(diaria or 0.0), 0.0)
-        for dataset in ("combustivel", "combustivel_km", "empilhadeira_horas", "manutencao", "pneus", "pedagio", "peso", "rodagem_rota"):
+        for dataset in ("combustivel", "combustivel_km", "empilhadeira_horas", "manutencao", "pneus", "pedagio", "aluguel_veiculos", "peso", "rodagem_rota"):
             _ensure_dataset_table(conn, dataset)
             table = _quote_identifier(DB_TABLES[dataset])
             conn.execute(
@@ -2593,6 +2601,44 @@ def load_pedagio() -> pd.DataFrame:
         return df.copy(deep=False)
 
 
+def load_aluguel_veiculos() -> pd.DataFrame:
+    cache = _ALUGUEL_VEICULOS_CACHE
+    with cache["lock"]:
+        version = _db_version("aluguel_veiculos")
+        cached = cache.get("df")
+        if cached is not None and cache.get("mtime") == version:
+            return cached.copy(deep=False)
+
+        df = _read_database_table("aluguel_veiculos", _ALUGUEL_VEICULOS_COLUMNS, date_columns=["Data"])
+        df = _finalize_common(
+            df,
+            date_columns=["Data"],
+            numeric_columns=["Custo"],
+            text_columns=["Fornecedor", "Observacao"],
+            plate_columns=["PLACA"],
+            default_category="Vex",
+        )
+        df["Categoria"] = "Vex"
+        cache["mtime"] = version
+        cache["df"] = df.copy()
+        return df.copy(deep=False)
+
+
+def agg_aluguel_veiculos(df: pd.DataFrame) -> dict:
+    custo_total = float(pd.to_numeric(df.get("Custo"), errors="coerce").sum()) if "Custo" in df else 0.0
+    meses_distintos = df["Mes"].dropna().unique() if "Mes" in df else []
+    return {
+        "custo_total": custo_total,
+        "media_mensal": float(custo_total / len(meses_distintos)) if len(meses_distintos) else 0.0,
+        "custo_mensal": _group_sum(df, "Mes", "Custo", sort_by="group"),
+        "gasto_por_placa": _group_sum(df, "PLACA", "Custo"),
+        "gasto_por_fornecedor": _group_sum(df, "Fornecedor", "Custo"),
+        "placas": _unique_sorted(df, "PLACA"),
+        "fornecedores": _unique_sorted(df, "Fornecedor"),
+        "meses": _unique_sorted(df, "Mes"),
+    }
+
+
 def load_peso() -> pd.DataFrame:
     cache = _PESO_CACHE
     with cache["lock"]:
@@ -2902,10 +2948,11 @@ def data_vex(params: dict | None = None) -> dict:
     df_manu = _only_registered_category(load_manutencao(), "Vex")
     df_hoteis = load_hoteis().iloc[0:0].copy()
     df_ped = _only_registered_category(load_pedagio(), "Vex")
+    df_aluguel = load_aluguel_veiculos()
     km_rodados = _only_registered_category(_apply_plate_categories(load_combustivel_km()), "Vex")
 
     anos_disponiveis: set[int] = set()
-    for df_src in (df_comb, df_manu, df_hoteis, df_ped, km_rodados):
+    for df_src in (df_comb, df_manu, df_hoteis, df_ped, df_aluguel, km_rodados):
         anos_disponiveis.update(_unique_years(df_src))
         anos_disponiveis.update(df_src.attrs.get("anos_sheets", []))
 
@@ -2916,12 +2963,12 @@ def data_vex(params: dict | None = None) -> dict:
         merged = pd.concat(frames, ignore_index=True)
         return _unique_sorted(merged, "Mes")
 
-    df_meses_base = [df_comb, df_manu, df_hoteis, df_ped, km_rodados]
+    df_meses_base = [df_comb, df_manu, df_hoteis, df_ped, df_aluguel, km_rodados]
     if ano is not None:
         df_meses_base = [_filter_by_period(df, ano=ano) for df in df_meses_base]
     meses_disponiveis = _meses_disponiveis(*df_meses_base)
 
-    df_placas_base = [df_comb, df_manu, df_ped, km_rodados]
+    df_placas_base = [df_comb, df_manu, df_ped, df_aluguel, km_rodados]
     if ano is not None:
         df_placas_base = [_filter_by_period(df, ano=ano) for df in df_placas_base]
     if meses:
@@ -2942,6 +2989,7 @@ def data_vex(params: dict | None = None) -> dict:
     df_manu = _apply_filters(df_manu)
     df_hoteis = _apply_filters(df_hoteis)
     df_ped = _apply_filters(df_ped)
+    df_aluguel = _apply_filters(df_aluguel)
 
     km_override = None
     if isinstance(km_rodados, pd.DataFrame) and not km_rodados.empty:
@@ -2964,19 +3012,21 @@ def data_vex(params: dict | None = None) -> dict:
     total_manu = float(pd.to_numeric(df_manu.get("Custo"), errors="coerce").sum()) if "Custo" in df_manu else 0.0
     total_hoteis = 0.0
     total_ped = float(pd.to_numeric(df_ped.get("Custo"), errors="coerce").sum()) if "Custo" in df_ped else 0.0
-    total_vex = total_comb + total_manu + total_hoteis + total_ped
+    total_aluguel = float(pd.to_numeric(df_aluguel.get("Custo"), errors="coerce").sum()) if "Custo" in df_aluguel else 0.0
+    total_vex = total_comb + total_manu + total_hoteis + total_ped + total_aluguel
 
     monthly_map: dict[str, float] = {}
     for src, key in (
         (_group_sum(df_comb, "Mes", "Custo", sort_by="group"), "Custo"),
         (_group_sum(df_manu, "Mes", "Custo", sort_by="group"), "Custo"),
         (_group_sum(df_ped, "Mes", "Custo", sort_by="group"), "Custo"),
+        (_group_sum(df_aluguel, "Mes", "Custo", sort_by="group"), "Custo"),
     ):
         for mes_val, valor in zip(src.get("Mes", []), src.get(key, [])):
             monthly_map[mes_val] = monthly_map.get(mes_val, 0.0) + float(valor or 0)
 
     placa_totais: dict[str, float] = {}
-    for df_src, col_valor in ((df_comb, "Custo"), (df_manu, "Custo"), (df_ped, "Custo")):
+    for df_src, col_valor in ((df_comb, "Custo"), (df_manu, "Custo"), (df_ped, "Custo"), (df_aluguel, "Custo")):
         if df_src.empty or "PLACA" not in df_src.columns or col_valor not in df_src.columns:
             continue
         df_val = df_src.dropna(subset=["PLACA"]).copy()
@@ -2998,6 +3048,7 @@ def data_vex(params: dict | None = None) -> dict:
         "manutencao_total": round(total_manu, 2),
         "hoteis_total": round(total_hoteis, 2),
         "pedagio_total": round(total_ped, 2),
+        "aluguel_veiculos_total": round(total_aluguel, 2),
         "km_total": round(km_total, 2),
         "litros_total": round(litros_total, 2),
         "km_por_litro": round((km_total / litros_total) if litros_total else 0.0, 3),
@@ -3006,7 +3057,11 @@ def data_vex(params: dict | None = None) -> dict:
         "mensal_total": {"Mes": meses_sorted, "Valor": [round(monthly_map[mes], 2) for mes in meses_sorted]},
         "km_mensal": km_mensal,
         "litros_mensal": litros_mensal,
-        "por_area": {"Area": ["Combustivel", "Manutencao", "Pedagio"], "Valor": [round(total_comb, 2), round(total_manu, 2), round(total_ped, 2)]},
+        "aluguel_mensal": _group_sum(df_aluguel, "Mes", "Custo", sort_by="group"),
+        "por_area": {
+            "Area": ["Combustivel", "Manutencao", "Pedagio", "Aluguel de veiculos"],
+            "Valor": [round(total_comb, 2), round(total_manu, 2), round(total_ped, 2), round(total_aluguel, 2)],
+        },
         "gasto_por_placa": {"PLACA": [item[0] for item in placas_ordenadas], "Valor": [round(item[1], 2) for item in placas_ordenadas]},
     }
 
@@ -4235,6 +4290,7 @@ def _warm_data_caches(*, blocking: bool = False) -> None:
         (load_pneus, "pneus"),
         (load_hoteis, "hoteis"),
         (load_pedagio, "pedagio/seguro/IPVA"),
+        (load_aluguel_veiculos, "aluguel de veiculos Vex"),
         (load_peso, "peso"),
         (load_rodagem_rota, "rodagem por rota"),
         (load_salarios_transporte, "salarios do transporte"),
@@ -4457,6 +4513,7 @@ def compute_overview_totals(*, ano: int | None = None, mes: int | None = None, m
         "manutencao": (load_manutencao, agg_manutencao, "custo_total", "Custo", True),
         "hoteis": (load_hoteis, agg_hoteis, "valor_total", "Valor", True),
         "pedagio": (load_pedagio, agg_pedagio, "custo_total", "Custo", True),
+        "aluguel_veiculos": (load_aluguel_veiculos, agg_aluguel_veiculos, "custo_total", "Custo", True),
         "peso": (load_peso, agg_peso, "peso_total", "Peso", False),
     }
 
@@ -4466,6 +4523,7 @@ def compute_overview_totals(*, ano: int | None = None, mes: int | None = None, m
         "manutencao",
         "hoteis",
         "pedagio",
+        "aluguel_veiculos",
         "peso",
         "placas",
         "salarios_transporte",
@@ -4584,6 +4642,7 @@ def data_overview_options(params: dict | None = None) -> dict:
         (load_manutencao, True),
         (load_hoteis, True),
         (load_pedagio, True),
+        (load_aluguel_veiculos, True),
         (load_peso, True),
         (load_salarios_transporte, False),
     )

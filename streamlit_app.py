@@ -32,6 +32,7 @@ if not all(
     hasattr(backend, feature)
     for feature in (
         "load_rodagem_rota",
+        "load_aluguel_veiculos",
         "upsert_dashboard_records",
         "append_missing_dashboard_records",
     )
@@ -45,7 +46,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-restaura-rotulos-graficos-v1"
+APP_VERSION = "deploy-aluguel-veiculos-vex-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -53,7 +54,7 @@ DATA_EDITOR_ALL_PAGES = "__todos_os_registros__"
 TABLE_FILTER_EMPTY_LABEL = "Sem informação"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
-CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras"]
+CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras", "Aluguel de veículos"]
 PEDAGIO_TIPO_OPTIONS = ["Pedagio", "Extras", "Taxi", "IPVA", "Seguro", "Licenciamento", "DPVAT", "Outros"]
 PEDAGIO_OPTIONAL_PLATE_TYPES = {"Extras", "Taxi"}
 BACKUP_INTERVAL_DAYS = 7
@@ -76,6 +77,7 @@ BACKUP_TABLES = [
     ("peso", "Peso", "peso", backend.load_peso),
     ("rodagem_rota", "Rodagem por rota", "rodagem_por_rota", backend.load_rodagem_rota),
     ("pedagio", "Pedagio Extras", "pedagio_extras", backend.load_pedagio),
+    ("aluguel_veiculos", "Aluguel de Veiculos Vex", "aluguel_veiculos_vex", backend.load_aluguel_veiculos),
 ]
 
 PLOTLY_CONFIG = {
@@ -5005,6 +5007,7 @@ def compare_kpi_cards(bundle: list[tuple[str, dict]]) -> list[tuple]:
                 ("custo_litro", "Custo médio por litro", fmt_brl(data.get("custo_por_litro"))),
                 ("manutencao", "Manutenção Vex (R$)", fmt_brl(data.get("manutencao_total"))),
                 ("pedagio", "Pedágio/Seguro Vex (R$)", fmt_brl(data.get("pedagio_total"))),
+                ("aluguel_veiculos", "Aluguel de veículos Vex (R$)", fmt_brl(data.get("aluguel_veiculos_total"))),
             ]
         else:
             route_cards = []
@@ -7267,6 +7270,12 @@ PEDAGIO_SHEET_ALIASES = {
     "MES": ["MES", "MS"],
 }
 
+ALUGUEL_VEICULOS_SHEET_ALIASES = {
+    "DATA": ["DATA", "DT"],
+    "PLACA": ["PLACA", "VEICULO", "VEICULOPLACA", "PLACAVEICULO"],
+    "CUSTO": ["CUSTO", "VALOR", "ALUGUEL"],
+}
+
 HOTEIS_SHEET_ALIASES = {
     "DATA": ["DATA", "DT"],
     "CIDADE": ["CIDADE"],
@@ -7694,6 +7703,60 @@ def _pedagio_rows_from_sheet(df: pd.DataFrame, plate_map: dict[str, str]) -> tup
                 "Tipo": tipo,
                 "Custo": custo,
                 "Categoria": plate_map.get(placa, "Transporte"),
+            }
+        )
+    return rows, errors
+
+
+def _aluguel_veiculos_rows_from_sheet(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
+    header_map = {_normalize_sheet_header(column): column for column in df.columns}
+
+    def resolve(*aliases: str):
+        return next((header_map[alias] for alias in aliases if alias in header_map), None)
+
+    data_column = resolve("DATA", "DT")
+    placa_column = resolve("PLACA", "VEICULO", "VEICULOPLACA", "PLACAVEICULO")
+    custo_column = resolve("CUSTO", "VALOR", "ALUGUEL")
+    fornecedor_column = resolve("FORNECEDOR", "LOCADORA", "EMPRESA", "FORNECEDORLOCADORA")
+    observacao_column = resolve("OBSERVACAO", "OBS", "DESCRICAO")
+    missing = [
+        label
+        for column, label in ((data_column, "DATA"), (placa_column, "PLACA/VEICULO"), (custo_column, "CUSTO"))
+        if column is None
+    ]
+    if missing:
+        return [], [f"Colunas faltando: {', '.join(missing)}."]
+
+    rows: list[dict] = []
+    errors: list[str] = []
+    for idx, row in df.iterrows():
+        data_info = _parse_sheet_date(row.get(data_column))
+        placa = clean_text(row.get(placa_column)).strip().upper()
+        custo = _parse_brl_number(row.get(custo_column))
+        fornecedor = clean_text(row.get(fornecedor_column)).strip() if fornecedor_column else ""
+        observacao = clean_text(row.get(observacao_column)).strip() if observacao_column else ""
+        if data_info is None and not placa and custo is None and not fornecedor and not observacao:
+            continue
+        missing_row = []
+        if data_info is None:
+            missing_row.append("DATA")
+        if not placa:
+            missing_row.append("PLACA/VEICULO")
+        if custo is None:
+            missing_row.append("CUSTO")
+        if missing_row:
+            errors.append(f"Linha {idx + 2}: preencher {', '.join(missing_row)}.")
+            continue
+        data, mes = data_info
+        rows.append(
+            {
+                "Data": data,
+                "Mes": mes,
+                "PLACA": placa,
+                "Fornecedor": fornecedor,
+                "Custo": custo,
+                "Observacao": observacao,
+                "Categoria": "Vex",
             }
         )
     return rows, errors
@@ -8937,6 +9000,120 @@ def _render_km_sheet_import() -> None:
             st.rerun()
 
 
+def _clear_aluguel_last_import() -> None:
+    st.session_state.pop("cad_aluguel_last_import_rows", None)
+    st.session_state.pop("cad_aluguel_last_import_count", None)
+
+
+def _undo_aluguel_last_import() -> None:
+    rows = st.session_state.get("cad_aluguel_last_import_rows") or []
+    if not rows:
+        st.warning("Nao ha importacao recente para apagar.")
+        return
+    try:
+        deleted = backend.delete_matching_dashboard_records("aluguel_veiculos", rows)
+    except Exception as exc:
+        st.error("Nao foi possivel apagar a ultima importacao de alugueis.")
+        st.exception(exc)
+        return
+    _clear_aluguel_last_import()
+    _reset_dataset_editor("cad_aluguel_table")
+    clear_cached_reads()
+    st.success(f"{deleted} aluguel(is) apagado(s).")
+    st.rerun()
+
+
+@st.fragment
+def _render_aluguel_sheet_import() -> None:
+    last_rows = st.session_state.get("cad_aluguel_last_import_rows") or []
+    if last_rows:
+        last_count = st.session_state.get("cad_aluguel_last_import_count", len(last_rows))
+        st.warning(f"Ultima importacao por planilha: {last_count} aluguel(is) de veiculo(s).")
+        undo_col, clear_col = st.columns(2)
+        with undo_col:
+            if st.button("Apagar ultima importacao", type="primary", width="stretch", key="cad_aluguel_undo_import"):
+                _undo_aluguel_last_import()
+        with clear_col:
+            if st.button("Manter importacao", width="stretch", key="cad_aluguel_keep_import"):
+                _clear_aluguel_last_import()
+                st.rerun()
+
+    with st.expander("Adicionar aluguel de veiculos por planilha", expanded=False):
+        _render_sheet_downloads(
+            backend.load_aluguel_veiculos,
+            [
+                ("Data", "DATA"),
+                ("PLACA", "PLACA/VEICULO"),
+                ("Fornecedor", "FORNECEDOR/LOCADORA"),
+                ("Custo", "CUSTO"),
+                ("Observacao", "OBSERVACAO"),
+            ],
+            {
+                "DATA": date.today(),
+                "PLACA/VEICULO": "ABC1D23",
+                "FORNECEDOR/LOCADORA": "LOCADORA EXEMPLO",
+                "CUSTO": 2500.0,
+                "OBSERVACAO": "Aluguel mensal",
+            },
+            key_prefix="cad_aluguel_sheet",
+            file_prefix="aluguel_veiculos_vex",
+            sheet_name="Aluguel Veiculos Vex",
+        )
+        uploaded = st.file_uploader("Enviar planilha", type=["xlsx", "csv"], key="cad_aluguel_upload")
+        if uploaded is None:
+            return
+        try:
+            raw_df = _read_uploaded_sheet(uploaded, ALUGUEL_VEICULOS_SHEET_ALIASES)
+        except Exception as exc:
+            st.error("Nao foi possivel ler a planilha. Envie um arquivo .xlsx ou .csv.")
+            st.exception(exc)
+            return
+        rows, errors = _aluguel_veiculos_rows_from_sheet(raw_df)
+        if errors:
+            st.warning("Revise a planilha antes de importar.")
+            for error in errors[:8]:
+                st.write(error)
+            if len(errors) > 8:
+                st.write(f"...mais {len(errors) - 8} erro(s).")
+            return
+        if not rows:
+            st.warning("Nenhuma linha valida encontrada na planilha.")
+            return
+        preview = pd.DataFrame(rows)
+        st.dataframe(
+            preview[["Data", "Mes", "PLACA", "Fornecedor", "Custo", "Observacao"]],
+            width="stretch",
+            hide_index=True,
+        )
+        if st.button(f"Importar {len(rows)} aluguel(is)", type="primary", width="stretch", key="cad_aluguel_import_sheet"):
+            try:
+                with st.spinner("Conferindo registros e salvando a planilha completa..."):
+                    imported_rows, skipped_rows = backend.append_missing_dashboard_records(
+                        "aluguel_veiculos",
+                        rows,
+                        update_plate_registry=False,
+                    )
+            except Exception as exc:
+                st.error(
+                    "A importacao foi cancelada sem salvar um lote incompleto. "
+                    "Tente novamente; os registros existentes nao serao duplicados."
+                )
+                st.exception(exc)
+                return
+            if imported_rows:
+                st.session_state["cad_aluguel_last_import_rows"] = imported_rows
+                st.session_state["cad_aluguel_last_import_count"] = len(imported_rows)
+            else:
+                _clear_aluguel_last_import()
+            _reset_dataset_editor("cad_aluguel_table")
+            clear_cached_reads()
+            st.success(
+                f"{len(imported_rows)} aluguel(is) novo(s) importado(s) e "
+                f"{skipped_rows} ja existente(s) mantido(s)."
+            )
+            st.rerun()
+
+
 @st.fragment
 def _render_pedagio_sheet_import(plate_map: dict[str, str]) -> None:
     last_rows = st.session_state.get("cad_ped_last_import_rows") or []
@@ -9878,6 +10055,97 @@ def render_cadastro() -> None:
                 ["Mes", "PLACA", "Categoria", "Tipo"],
             )
 
+        if active_tab == "Aluguel de veículos":
+            _render_aluguel_sheet_import()
+            st.info("Os valores cadastrados aqui entram exclusivamente no dashboard Vex.")
+
+            vex_plates = {placa for placa, categoria in plate_map.items() if categoria == "Vex"}
+            try:
+                aluguel_df = backend.load_aluguel_veiculos()
+                if not aluguel_df.empty and "PLACA" in aluguel_df.columns:
+                    vex_plates.update(
+                        clean_text(value).strip().upper()
+                        for value in aluguel_df["PLACA"].dropna().tolist()
+                        if clean_text(value).strip()
+                    )
+            except Exception:
+                pass
+            vex_plates = sorted(vex_plates)
+            with st.form("form_aluguel_veiculos", clear_on_submit=True):
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    data = st.date_input("Data", value=date.today(), key="cad_aluguel_data")
+                    vehicle_options = [*vex_plates, "Cadastrar novo veículo"]
+                    selected_vehicle = st.selectbox(
+                        "Placa/veículo",
+                        vehicle_options,
+                        index=None,
+                        placeholder="Selecione ou cadastre o veículo",
+                        key="cad_aluguel_placa_select",
+                    )
+                    if selected_vehicle == "Cadastrar novo veículo":
+                        placa = st.text_input(
+                            "Nova placa/identificação",
+                            placeholder="ABC1D23",
+                            key="cad_aluguel_placa_manual",
+                        ).upper()
+                    else:
+                        placa = selected_vehicle or ""
+                with c2:
+                    fornecedor = st.text_input(
+                        "Fornecedor/locadora",
+                        placeholder="Nome da locadora",
+                        key="cad_aluguel_fornecedor",
+                    )
+                    observacao = st.text_input(
+                        "Observação",
+                        placeholder="Ex.: aluguel mensal",
+                        key="cad_aluguel_observacao",
+                    )
+                with c3:
+                    st.text_input("Categoria", value="Vex", disabled=True, key="cad_aluguel_categoria")
+                    custo = st.number_input(
+                        "Custo do aluguel",
+                        min_value=0.0,
+                        step=100.0,
+                        format="%.2f",
+                        key="cad_aluguel_custo",
+                    )
+                    submitted = st.form_submit_button("Salvar aluguel", type="primary", width="stretch")
+                if submitted:
+                    _save_entry(
+                        "aluguel_veiculos",
+                        {
+                            "Data": data,
+                            "Mes": _entry_month(data),
+                            "PLACA": placa,
+                            "Fornecedor": fornecedor,
+                            "Custo": custo,
+                            "Observacao": observacao,
+                            "Categoria": "Vex",
+                        },
+                        required=["Data", "PLACA", "Custo"],
+                        success="Aluguel de veículo Vex salvo.",
+                        reset_table_key="cad_aluguel_table",
+                    )
+
+            _render_dataset_editor(
+                "aluguel_veiculos",
+                backend.load_aluguel_veiculos,
+                ["Data", "Mes", "PLACA", "Fornecedor", "Custo", "Observacao"],
+                ["Data", "PLACA", "Custo"],
+                "cad_aluguel_table",
+                {
+                    "Data": _date_col(),
+                    "Mes": st.column_config.TextColumn("Mês"),
+                    "PLACA": st.column_config.TextColumn("Placa/veículo"),
+                    "Fornecedor": st.column_config.TextColumn("Fornecedor/locadora"),
+                    "Custo": _money_col("Custo do aluguel"),
+                    "Observacao": st.column_config.TextColumn("Observação"),
+                },
+                ["Mes", "PLACA", "Fornecedor", "Observacao"],
+            )
+
 
 def render_combustivel() -> None:
     topbar("JR DASHBOARD • Combustível", back=False)
@@ -10140,12 +10408,14 @@ def render_vex() -> None:
         ("custo_litro", "Custo médio por litro", fmt_brl(data.get("custo_por_litro"))),
         ("manutencao_vex", "Manutenção Vex (R$)", fmt_brl(data.get("manutencao_total"))),
         ("pedagio_vex", "Pedágio/Seguro Vex (R$)", fmt_brl(data.get("pedagio_total"))),
+        ("aluguel_veiculos_vex", "Aluguel de veículos Vex (R$)", fmt_brl(data.get("aluguel_veiculos_total"))),
     ]
     include_year = params.get("ano") is None
     fallback_year = params.get("ano")
     mensal_labels, mensal_values = sorted_series(data.get("mensal_total", {}), "Mes", "Valor", include_year=include_year, fallback_year=fallback_year)
     km_labels, km_values = sorted_series(data.get("km_mensal", {}), "Mes", "Km Rodados", include_year=include_year, fallback_year=fallback_year)
     litros_labels, litros_values = sorted_series(data.get("litros_mensal", {}), "Mes", "Litros", include_year=include_year, fallback_year=fallback_year)
+    aluguel_labels, aluguel_values = sorted_series(data.get("aluguel_mensal", {}), "Mes", "Custo", include_year=include_year, fallback_year=fallback_year)
     compare_selected = filter_state.get("_compare", [])
     compare_data = compare_bundle("vex", data, params, compare_selected)
     if compare_selected:
@@ -10179,6 +10449,13 @@ def render_vex() -> None:
             else bar_chart(litros_labels, litros_values, currency=False, show_text=True),
         ),
         ("gasto_area", "Gasto Vex por área", bar_chart(data.get("por_area", {}).get("Area", []), data.get("por_area", {}).get("Valor", []))),
+        (
+            "aluguel_mes",
+            "Aluguel de veículos Vex por mês",
+            yearly_month_line_chart(data.get("aluguel_mensal", {}), "Mes", "Custo", fallback_year=fallback_year)
+            if include_year
+            else line_chart(aluguel_labels, aluguel_values),
+        ),
         ("gasto_placa", "Gasto Vex por placa", plate_fig),
     ]
     render_controlled_dashboard("vex", title="JR Dashboard - Vex", kpis=kpis, charts=charts)
