@@ -52,7 +52,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-vex-gasto-area-pizza-v1"
+APP_VERSION = "deploy-vex-gasto-area-pizza-valores-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -3446,15 +3446,22 @@ def bar_chart(
     return apply_theme(fig, height=chart_height)
 
 
-def pie_chart(labels: list, values: list, *, hole: float = 0.45) -> go.Figure:
+def pie_chart(labels: list, values: list, *, hole: float = 0.45, show_values: bool = False) -> go.Figure:
+    values_clean = [float(value or 0) for value in values or []]
+    value_labels = [fmt_brl_compact(value) for value in values_clean]
     fig = go.Figure(
         go.Pie(
             labels=labels or [],
-            values=[float(value or 0) for value in values or []],
+            values=values_clean,
+            customdata=value_labels,
             hole=hole,
-            textinfo="percent",
-            textposition="inside",
-            hovertemplate="<b>%{label}</b><br>R$ %{value:,.2f}<extra></extra>",
+            textinfo="percent" if not show_values else "none",
+            texttemplate="%{customdata}<br>%{percent}" if show_values else None,
+            textposition="auto" if show_values else "inside",
+            insidetextfont={"color": "#ffffff", "size": 12},
+            outsidetextfont={"color": JR_BLUE, "size": 12},
+            automargin=True,
+            hovertemplate="<b>%{label}</b><br>%{customdata}<br>%{percent}<extra></extra>",
         )
     )
     fig.update_layout(showlegend=True, legend={"orientation": "h", "x": 0.5, "xanchor": "center", "y": -0.2})
@@ -10568,6 +10575,7 @@ def render_vex() -> None:
                 data.get("por_area", {}).get("Area", []),
                 data.get("por_area", {}).get("Valor", []),
                 hole=0,
+                show_values=True,
             ),
         ),
         (
