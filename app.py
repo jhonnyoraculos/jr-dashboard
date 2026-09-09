@@ -217,7 +217,7 @@ def _db_engine():
     global _DB_ENGINE
     url = _database_url()
     if not url:
-        raise RuntimeError("DATABASE_URL/NEON_DATABASE_URL nao configurada. Configure o Secret do Neon no Streamlit.")
+        raise RuntimeError("DATABASE_URL/NEON_DATABASE_URL não configurada. Configure o Secret do Neon no Streamlit.")
     if _DB_ENGINE is None:
         from sqlalchemy import create_engine
 
@@ -324,7 +324,7 @@ def _read_database_table(dataset: str, columns: list[str], *, date_columns: list
             _ensure_dataset_table(conn, dataset)
         df = pd.read_sql_query(text(f'SELECT * FROM "{table}"'), engine)
     except Exception as exc:
-        raise RuntimeError(f'Nao foi possivel ler a tabela "{table}" no Neon.') from exc
+        raise RuntimeError(f'Não foi possível ler a tabela "{table}" no Neon.') from exc
 
     for column in columns:
         if column not in df.columns:
@@ -537,7 +537,7 @@ def _ensure_dataset_table(conn, dataset: str) -> None:
 
 def save_dashboard_record(dataset: str, row: dict, *, replace_keys: list[str] | None = None) -> str:
     if dataset not in DB_TABLES:
-        raise ValueError(f"Dataset invalido: {dataset}")
+        raise ValueError(f"Conjunto de dados inválido: {dataset}")
 
     from sqlalchemy import text
 
@@ -618,7 +618,7 @@ def save_dashboard_record(dataset: str, row: dict, *, replace_keys: list[str] | 
 
 def replace_dashboard_records(dataset: str, rows: list[dict]) -> str:
     if dataset not in DB_TABLES or dataset not in _DATASET_COLUMNS:
-        raise ValueError(f"Dataset invalido: {dataset}")
+        raise ValueError(f"Conjunto de dados inválido: {dataset}")
 
     from sqlalchemy import text
 
@@ -696,7 +696,7 @@ def replace_dashboard_records(dataset: str, rows: list[dict]) -> str:
 
 def append_dashboard_records(dataset: str, rows: list[dict], *, update_plate_registry: bool = True) -> str:
     if dataset not in DB_TABLES or dataset not in _DATASET_COLUMNS:
-        raise ValueError(f"Dataset invalido: {dataset}")
+        raise ValueError(f"Conjunto de dados inválido: {dataset}")
 
     from sqlalchemy import text
 
@@ -799,9 +799,9 @@ def append_missing_dashboard_records(
     *,
     update_plate_registry: bool = True,
 ) -> tuple[list[dict], int]:
-    """Insere somente o que falta, em uma unica transacao atomica."""
+    """Insere somente o que falta, em uma única transação atômica."""
     if dataset not in DB_TABLES or dataset not in _DATASET_COLUMNS:
-        raise ValueError(f"Dataset invalido: {dataset}")
+        raise ValueError(f"Conjunto de dados inválido: {dataset}")
 
     from sqlalchemy import text
 
@@ -939,10 +939,10 @@ def append_missing_dashboard_records(
 def upsert_dashboard_records(dataset: str, rows: list[dict], *, replace_keys: list[str]) -> str:
     """Insere várias linhas substituindo a combinação informada, em uma transação."""
     if dataset not in DB_TABLES or dataset not in _DATASET_COLUMNS:
-        raise ValueError(f"Dataset invalido: {dataset}")
+        raise ValueError(f"Conjunto de dados inválido: {dataset}")
     keys = [key for key in replace_keys if key in _DATASET_COLUMNS[dataset]]
     if not keys:
-        raise ValueError("Informe ao menos uma chave valida para substituir os registros.")
+        raise ValueError("Informe ao menos uma chave válida para substituir os registros.")
 
     from sqlalchemy import text
 
@@ -1007,7 +1007,7 @@ def load_peso_route_template() -> pd.DataFrame:
             engine,
         )
     except Exception as exc:
-        raise RuntimeError("Nao foi possivel carregar as datas de peso no Neon.") from exc
+        raise RuntimeError("Não foi possível carregar as datas de peso no Neon.") from exc
 
     df["Data"] = pd.to_datetime(df.get("Data"), errors="coerce")
     return df[["Data", "Mes", "PLACA", "Rota"]].copy()
@@ -1021,13 +1021,13 @@ def _prepare_peso_route_rows(rows: list[dict]) -> list[dict]:
         plate = "" if pd.isna(normalized_plate) else str(normalized_plate).strip()
         route = str(row.get("Rota") or "").strip().upper()
         if pd.isna(parsed_date):
-            raise ValueError(f"Linha {index}: data invalida.")
+            raise ValueError(f"Linha {index}: data inválida.")
         if not plate:
-            raise ValueError(f"Linha {index}: placa nao preenchida.")
+            raise ValueError(f"Linha {index}: placa não preenchida.")
         route_date = parsed_date.date()
         prepared.append({"Data": route_date, "PLACA": plate, "Rota": route})
     if not prepared:
-        raise ValueError("Nenhuma rota valida para importar.")
+        raise ValueError("Nenhuma rota válida para importar.")
     return prepared
 
 
@@ -1116,7 +1116,7 @@ def _match_peso_route_rows(
                 detail = (
                     f" Placas cadastradas nessa data: {available_text}."
                     if available_text
-                    else " Nao ha placas cadastradas nessa data."
+                    else " Não há placas cadastradas nessa data."
                 )
                 warnings.append(
                     f"{route_date.strftime('%d/%m/%Y')} - {plate}: nenhum registro de peso encontrado."
@@ -1160,7 +1160,7 @@ def update_peso_routes(rows: list[dict]) -> int:
         _ensure_dataset_table(conn, "peso")
         matches, errors, _warnings = _match_peso_route_rows(conn, rows, lock=True)
         if errors:
-            raise ValueError("A importacao foi cancelada. " + " ".join(errors))
+            raise ValueError("A importação foi cancelada. " + " ".join(errors))
 
         if matches:
             conn.execute(
@@ -1183,7 +1183,7 @@ def update_peso_routes(rows: list[dict]) -> int:
 
 def delete_matching_dashboard_records(dataset: str, rows: list[dict]) -> int:
     if dataset not in DB_TABLES or dataset not in _DATASET_COLUMNS:
-        raise ValueError(f"Dataset invalido: {dataset}")
+        raise ValueError(f"Conjunto de dados inválido: {dataset}")
 
     from sqlalchemy import text
 
@@ -1232,11 +1232,11 @@ def delete_matching_dashboard_records(dataset: str, rows: list[dict]) -> int:
 
 def delete_dashboard_month(dataset: str, mes: str) -> int:
     if dataset not in DB_TABLES or dataset not in _DATASET_COLUMNS:
-        raise ValueError(f"Dataset invalido: {dataset}")
+        raise ValueError(f"Conjunto de dados inválido: {dataset}")
 
     mes_value = str(mes or "").strip()
     if not re.fullmatch(r"\d{4}-\d{2}", mes_value):
-        raise ValueError("Mes invalido. Use o formato YYYY-MM.")
+        raise ValueError("Mês inválido. Use o formato YYYY-MM.")
     year, month = (int(part) for part in mes_value.split("-"))
     start_date = datetime(year, month, 1)
     end_date = datetime(year + (1 if month == 12 else 0), 1 if month == 12 else month + 1, 1)
@@ -1270,7 +1270,7 @@ def delete_dashboard_month(dataset: str, mes: str) -> int:
 
 def delete_dashboard_all(dataset: str) -> int:
     if dataset not in DB_TABLES or dataset not in _DATASET_COLUMNS:
-        raise ValueError(f"Dataset invalido: {dataset}")
+        raise ValueError(f"Conjunto de dados inválido: {dataset}")
 
     from sqlalchemy import text
 
@@ -1295,13 +1295,13 @@ def delete_dashboard_all(dataset: str) -> int:
 
 def _month_sequence(start_mes: str, end_mes: str) -> list[str]:
     if not re.fullmatch(r"\d{4}-\d{2}", str(start_mes or "")) or not re.fullmatch(r"\d{4}-\d{2}", str(end_mes or "")):
-        raise ValueError("Periodo invalido. Use o formato YYYY-MM.")
+        raise ValueError("Período inválido. Use o formato YYYY-MM.")
     start_year, start_month = (int(part) for part in start_mes.split("-"))
     end_year, end_month = (int(part) for part in end_mes.split("-"))
     cursor = datetime(start_year, start_month, 1)
     end = datetime(end_year, end_month, 1)
     if cursor > end:
-        raise ValueError("Periodo inicial maior que o final.")
+        raise ValueError("Período inicial maior que o final.")
 
     months = []
     while cursor <= end:
@@ -1319,7 +1319,7 @@ def redistribute_pedagio_seguros_period(
 ) -> dict:
     months = _month_sequence(start_mes, end_mes)
     if not months:
-        raise ValueError("Periodo sem meses para aplicar.")
+        raise ValueError("Período sem meses para aplicar.")
 
     from sqlalchemy import text
 
@@ -1435,7 +1435,7 @@ def replace_pedagio_seguros_por_placa(
 ) -> dict:
     months = _month_sequence(start_mes, end_mes)
     if not months:
-        raise ValueError("Periodo sem meses para aplicar.")
+        raise ValueError("Período sem meses para aplicar.")
 
     normalized: dict[tuple[str, str], float] = {}
     for record in records or []:
@@ -1512,9 +1512,9 @@ def rename_plate(old_plate, new_plate, categoria: str, diaria: float | None = No
     old_value = _normalize_plate_value(old_plate)
     new_value = _normalize_plate_value(new_plate)
     if not _is_plate_or_asset_identifier(old_value):
-        raise ValueError("Placa/equipamento original invalido.")
+        raise ValueError("Placa/equipamento original inválido.")
     if not _is_plate_or_asset_identifier(new_value):
-        raise ValueError("Nova placa/equipamento invalido.")
+        raise ValueError("Nova placa/equipamento inválido.")
 
     categoria_value = _normalize_category_value(categoria)
     version = datetime.now(timezone.utc).isoformat()
@@ -1715,13 +1715,13 @@ def _normalize_tipo_value(value):
     if not text:
         return "Outros"
     if "PEDAG" in text:
-        return "Pedagio"
+        return "Pedágio"
     if "IPVA" in text:
         return "IPVA"
     if "SEGUR" in text or "APOLI" in text:
         return "Seguro"
     if "TAXI" in text:
-        return "Taxi"
+        return "Táxi"
     if "EXTRA" in text:
         return "Extras"
     if "LICENCI" in text:
@@ -2660,7 +2660,7 @@ def load_aluguel_veiculos() -> pd.DataFrame:
 
 
 def _expand_aluguel_periods(df: pd.DataFrame) -> pd.DataFrame:
-    """Completa todos os meses da locacao, repetindo o valor mensal informado."""
+    """Completa todos os meses da locação, repetindo o valor mensal informado."""
     if df is None or df.empty:
         return df.copy() if isinstance(df, pd.DataFrame) else _empty(_ALUGUEL_VEICULOS_COLUMNS)
 
@@ -2860,10 +2860,10 @@ def agg_pedagio(df: pd.DataFrame) -> dict:
         "media_mensal": media_mensal,
         "ticket_medio": media_valores,
         "media_valores": media_valores,
-        "gasto_pedagio": float(tipo_totais.get("Pedagio", 0.0)),
+        "gasto_pedagio": float(tipo_totais.get("Pedágio", 0.0)),
         "gasto_ipva": float(tipo_totais.get("IPVA", 0.0)),
         "gasto_seguro": float(tipo_totais.get("Seguro", 0.0)),
-        "qtd_pedagio": int(tipo_contagens.get("Pedagio", 0)),
+        "qtd_pedagio": int(tipo_contagens.get("Pedágio", 0)),
         "qtd_ipva": int(tipo_contagens.get("IPVA", 0)),
         "qtd_seguro": int(tipo_contagens.get("Seguro", 0)),
         "custo_mensal": _group_sum(other_df, "Mes", "Custo", sort_by="group"),
@@ -3163,7 +3163,7 @@ def data_vex(params: dict | None = None) -> dict:
         "litros_mensal": litros_mensal,
         "aluguel_mensal": _group_sum(df_aluguel, "Mes", "Custo", sort_by="group"),
         "por_area": {
-            "Area": ["Combustivel", "Manutencao", "Pedagio", "Aluguel de veiculos"],
+            "Area": ["Combustível", "Manutenção", "Pedágio", "Aluguel de veículos"],
             "Valor": [round(total_comb, 2), round(total_manu, 2), round(total_ped, 2), round(total_aluguel, 2)],
         },
         "gasto_por_placa": {"PLACA": [item[0] for item in placas_ordenadas], "Valor": [round(item[1], 2) for item in placas_ordenadas]},
@@ -3275,7 +3275,7 @@ def _ranking_eligible_route_weight_rows(
     df_peso: pd.DataFrame,
     df_route_km: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Mantem Freteiros e placas com rodagem cadastrada na rota e no mes."""
+    """Mantém Freteiros e placas com rodagem cadastrada na rota e no mês."""
     required = {"Mes", "Rota", "PLACA", "Categoria"}
     if df_peso.empty or not required.issubset(df_peso.columns):
         return df_peso.iloc[0:0].copy()
@@ -4389,15 +4389,15 @@ def data_frota(params: dict | None = None) -> dict:
 
 def _warm_data_caches(*, blocking: bool = False) -> None:
     loaders = (
-        (load_combustivel, "combustivel"),
-        (load_manutencao, "manutencao"),
+        (load_combustivel, "combustível"),
+        (load_manutencao, "manutenção"),
         (load_pneus, "pneus"),
-        (load_hoteis, "hoteis"),
-        (load_pedagio, "pedagio/seguro/IPVA"),
-        (load_aluguel_veiculos, "aluguel de veiculos Vex"),
+        (load_hoteis, "hotéis"),
+        (load_pedagio, "pedágio/seguro/IPVA"),
+        (load_aluguel_veiculos, "aluguel de veículos Vex"),
         (load_peso, "peso"),
         (load_rodagem_rota, "rodagem por rota"),
-        (load_salarios_transporte, "salarios do transporte"),
+        (load_salarios_transporte, "salários do transporte"),
     )
 
     def _run() -> None:
@@ -4407,7 +4407,7 @@ def _warm_data_caches(*, blocking: bool = False) -> None:
                 try:
                     future.result()
                 except Exception as exc:  # pragma: no cover
-                    print(f"Aviso: nao foi possivel pre-carregar {label} ({exc})")
+                    print(f"Aviso: não foi possível pré-carregar {label} ({exc})")
 
     if blocking:
         _run()
