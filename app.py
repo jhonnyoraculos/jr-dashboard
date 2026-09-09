@@ -52,6 +52,7 @@ DB_TABLES = {
     "salarios_transporte": "dashboard_salarios_transporte",
 }
 DB_METADATA_TABLE = "dashboard_metadata"
+BACKEND_BUILD_VERSION = "aluguel-rateio-meses-v1"
 BACKUP_METADATA_KEY = "backup.last_downloaded_at"
 _DB_ENGINE = None
 _METADATA_CACHE_SECONDS = float(os.environ.get("JR_METADATA_CACHE_SECONDS", "30") or 30)
@@ -2658,7 +2659,78 @@ def load_aluguel_veiculos() -> pd.DataFrame:
         return df.copy(deep=False)
 
 
+def _split_currency_total(total: float, count: int) -> list[float]:
+    if count <= 0:
+        return []
+    total_cents = int(round(float(total or 0.0) * 100))
+    sign = -1 if total_cents < 0 else 1
+    base, remainder = divmod(abs(total_cents), count)
+    return [sign * (base + (1 if index < remainder else 0)) / 100 for index in range(count)]
+
+
+def _expand_aluguel_periods(df: pd.DataFrame) -> pd.DataFrame:
+    """Consolida cada locacao e rateia seu valor entre todos os meses do periodo."""
+    if df is None or df.empty:
+        return df.copy() if isinstance(df, pd.DataFrame) else _empty(_ALUGUEL_VEICULOS_COLUMNS)
+
+    source = df.copy()
+    inicio_values = pd.to_datetime(source.get("Inicio"), errors="coerce")
+    fim_values = pd.to_datetime(source.get("Fim"), errors="coerce")
+    grouped: dict[tuple, dict] = {}
+    passthrough: list[dict] = []
+
+    def key_text(value) -> str:
+        try:
+            if pd.isna(value):
+                return ""
+        except (TypeError, ValueError):
+            pass
+        return str(value).strip()
+
+    for position, (_, row) in enumerate(source.iterrows()):
+        inicio = inicio_values.iloc[position]
+        fim = fim_values.iloc[position]
+        if pd.isna(inicio) or pd.isna(fim) or fim < inicio:
+            passthrough.append(row.to_dict())
+            continue
+        key = (
+            inicio.date(),
+            fim.date(),
+            key_text(row.get("PLACA")),
+            key_text(row.get("Fornecedor")),
+            key_text(row.get("Observacao")),
+            key_text(row.get("Categoria")),
+        )
+        item = grouped.setdefault(key, {"row": row.to_dict(), "total": 0.0})
+        custo = pd.to_numeric(pd.Series([row.get("Custo")]), errors="coerce").iloc[0]
+        item["total"] += float(custo) if pd.notna(custo) else 0.0
+
+    expanded = passthrough
+    for (inicio, fim, *_), item in grouped.items():
+        months = list(pd.period_range(start=inicio, end=fim, freq="M"))
+        values = _split_currency_total(item["total"], len(months))
+        for month, value in zip(months, values):
+            month_start = month.start_time.date()
+            output = dict(item["row"])
+            output["Data"] = max(inicio, month_start)
+            output["Mes"] = str(month)
+            output["Inicio"] = inicio
+            output["Fim"] = fim
+            output["Custo"] = value
+            output["Categoria"] = "Vex"
+            expanded.append(output)
+
+    result = pd.DataFrame(expanded)
+    for column in source.columns:
+        if column not in result.columns:
+            result[column] = pd.NA
+    result = result[source.columns]
+    result.attrs = source.attrs.copy()
+    return result
+
+
 def agg_aluguel_veiculos(df: pd.DataFrame) -> dict:
+    df = _expand_aluguel_periods(df)
     custo_total = float(pd.to_numeric(df.get("Custo"), errors="coerce").sum()) if "Custo" in df else 0.0
     meses_distintos = df["Mes"].dropna().unique() if "Mes" in df else []
     return {
@@ -2982,7 +3054,7 @@ def data_vex(params: dict | None = None) -> dict:
     df_manu = _only_registered_category(load_manutencao(), "Vex")
     df_hoteis = load_hoteis().iloc[0:0].copy()
     df_ped = _only_registered_category(load_pedagio(), "Vex")
-    df_aluguel = load_aluguel_veiculos()
+    df_aluguel = _expand_aluguel_periods(load_aluguel_veiculos())
     km_rodados = _only_registered_category(_apply_plate_categories(load_combustivel_km()), "Vex")
 
     anos_disponiveis: set[int] = set()
