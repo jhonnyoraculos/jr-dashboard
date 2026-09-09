@@ -52,7 +52,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-vex-gasto-area-pizza-valores-v1"
+APP_VERSION = "deploy-vex-pedagio-label-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -5019,7 +5019,7 @@ def compare_kpi_cards(bundle: list[tuple[str, dict]]) -> list[tuple]:
                 ("media_kml", "Média KM/L", fmt_num(data.get("km_por_litro"), 2)),
                 ("custo_litro", "Custo médio por litro", fmt_brl(data.get("custo_por_litro"))),
                 ("manutencao", "Manutenção Vex (R$)", fmt_brl(data.get("manutencao_total"))),
-                ("pedagio", "Pedágio/Seguro Vex (R$)", fmt_brl(data.get("pedagio_total"))),
+                ("pedagio", "Pedágio Vex (R$)", fmt_brl(data.get("pedagio_total"))),
                 ("aluguel_veiculos", "Aluguel de veículos Vex (R$)", fmt_brl(data.get("aluguel_veiculos_total"))),
             ]
         else:
@@ -10527,7 +10527,7 @@ def render_vex() -> None:
         ("media_kml", "Média KM/L", fmt_num(data.get("km_por_litro"), 2)),
         ("custo_litro", "Custo médio por litro", fmt_brl(data.get("custo_por_litro"))),
         ("manutencao_vex", "Manutenção Vex (R$)", fmt_brl(data.get("manutencao_total"))),
-        ("pedagio_vex", "Pedágio/Seguro Vex (R$)", fmt_brl(data.get("pedagio_total"))),
+        ("pedagio_vex", "Pedágio Vex (R$)", fmt_brl(data.get("pedagio_total"))),
         ("aluguel_veiculos_vex", "Aluguel de veículos Vex (R$)", fmt_brl(data.get("aluguel_veiculos_total"))),
     ]
     include_year = params.get("ano") is None
