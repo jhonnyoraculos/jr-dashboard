@@ -52,7 +52,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-aluguel-veiculos-multiplicar-v1"
+APP_VERSION = "deploy-vex-gasto-area-pizza-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -3446,12 +3446,12 @@ def bar_chart(
     return apply_theme(fig, height=chart_height)
 
 
-def pie_chart(labels: list, values: list) -> go.Figure:
+def pie_chart(labels: list, values: list, *, hole: float = 0.45) -> go.Figure:
     fig = go.Figure(
         go.Pie(
             labels=labels or [],
             values=[float(value or 0) for value in values or []],
-            hole=0.45,
+            hole=hole,
             textinfo="percent",
             textposition="inside",
             hovertemplate="<b>%{label}</b><br>R$ %{value:,.2f}<extra></extra>",
@@ -10561,7 +10561,15 @@ def render_vex() -> None:
             if include_year
             else bar_chart(litros_labels, litros_values, currency=False, show_text=True),
         ),
-        ("gasto_area", "Gasto Vex por área", bar_chart(data.get("por_area", {}).get("Area", []), data.get("por_area", {}).get("Valor", []))),
+        (
+            "gasto_area",
+            "Gasto Vex por área",
+            pie_chart(
+                data.get("por_area", {}).get("Area", []),
+                data.get("por_area", {}).get("Valor", []),
+                hole=0,
+            ),
+        ),
         (
             "aluguel_mes",
             "Aluguel de veículos Vex por mês",
