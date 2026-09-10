@@ -5812,7 +5812,6 @@ def render_frota() -> None:
     params = frota_filter_controls(seed)
     data = route_json("frota", params)
     totais = data.get("totais", {}) or {}
-    order_label = RANK_ORDER_OPTIONS.get(str(data.get("ordenar_por") or params.get("ordenar_por")), "Combustível")
     selected_categories = [str(item) for item in (params.get("categoria") or []) if item not in (None, "", "Todos")]
     selected_routes = [str(item) for item in (params.get("rota") or []) if item not in (None, "", "Todos")]
     selected_plates = [str(item) for item in (params.get("placa") or []) if item not in (None, "", "Todos")]
@@ -5846,7 +5845,6 @@ def render_frota() -> None:
         ("Custo sobre o ganho das entregas", fmt_percent(cost_percentage), "#D97706"),
         ("Ganho das entregas", fmt_brl_big(totais.get("valor_peso")), "#15803D"),
         (weight_label, fmt_peso(totais.get("peso_total")), JR_BLUE),
-        ("Ordenado por", order_label, JR_BLUE),
     ]
     operation_kpis = []
     if not freteiro_mode:
