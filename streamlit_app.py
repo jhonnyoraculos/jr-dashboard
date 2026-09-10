@@ -59,7 +59,7 @@ DATA_EDITOR_PAGE_SIZE = 100
 DATA_EDITOR_ALL_PAGES = "__todos_os_registros__"
 TABLE_FILTER_EMPTY_LABEL = "Sem informação"
 BR_TZ = ZoneInfo("America/Sao_Paulo")
-CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Vex", "Equipamento"]
+CATEGORY_OPTIONS = ["Transporte", "Freteiro", "Empilhadeira", "Estoque", "Vex", "Equipamento"]
 CADASTRO_TABS = ["Placas", "Empilhadeiras", "Combustível", "KM mensal", "Manutenção", "Pneus", "Hotéis", "Peso", "Pedágio/Extras", "Aluguel de veículos"]
 PEDAGIO_TIPO_OPTIONS = ["Pedágio", "Extras", "Táxi", "IPVA", "Seguro", "Licenciamento", "DPVAT", "Outros"]
 PEDAGIO_OPTIONAL_PLATE_TYPES = {"Extras", "Táxi"}
@@ -6392,10 +6392,14 @@ def _registered_plate_map() -> dict[str, str]:
         categoria = clean_text(row.get("Categoria") or "Transporte").strip()
         if placa:
             normalized = categoria.lower()
-            if "EMPILHADEIRA" in placa:
+            if "ESTOQUE" in placa:
+                mapping[placa] = "Estoque"
+            elif "EMPILHADEIRA" in placa:
                 mapping[placa] = "Empilhadeira"
             elif normalized == "empilhadeira":
                 mapping[placa] = "Empilhadeira"
+            elif normalized == "estoque":
+                mapping[placa] = "Estoque"
             elif normalized == "vex":
                 mapping[placa] = "Vex"
             elif "fret" in normalized:
@@ -6518,9 +6522,10 @@ def _plate_fields(prefix: str, plate_map: dict[str, str] | None = None) -> tuple
     if selected == "Cadastrar nova placa":
         placa = st.text_input("Nova placa", placeholder="ABC1D23", key=f"{prefix}_placa_manual").upper()
         categoria_key = f"{prefix}_categoria_manual"
-        default_categoria = "Empilhadeira" if "EMPILHADEIRA" in clean_text(placa).upper() else "Transporte"
-        if default_categoria == "Empilhadeira" and st.session_state.get(categoria_key, "Transporte") == "Transporte":
-            st.session_state[categoria_key] = "Empilhadeira"
+        plate_text = clean_text(placa).upper()
+        default_categoria = "Estoque" if "ESTOQUE" in plate_text else ("Empilhadeira" if "EMPILHADEIRA" in plate_text else "Transporte")
+        if default_categoria in {"Empilhadeira", "Estoque"} and st.session_state.get(categoria_key, "Transporte") == "Transporte":
+            st.session_state[categoria_key] = default_categoria
         categoria = st.selectbox("Categoria da placa", CATEGORY_OPTIONS, index=CATEGORY_OPTIONS.index(default_categoria), key=categoria_key)
         return placa, categoria
     if selected is None:
@@ -6610,6 +6615,8 @@ def _save_plate_sheet(
             categoria_final = "Freteiro"
         elif normalized == "empilhadeira":
             categoria_final = "Empilhadeira"
+        elif normalized == "estoque":
+            categoria_final = "Estoque"
         elif normalized == "equipamento":
             categoria_final = "Equipamento"
         else:
@@ -9593,9 +9600,10 @@ def render_cadastro() -> None:
                 with c1:
                     placa = st.text_input("Placa", placeholder="ABC1D23", key="cad_placa_nome").upper()
                 with c2:
-                    default_categoria = "Empilhadeira" if "EMPILHADEIRA" in clean_text(placa).upper() else "Transporte"
-                    if default_categoria == "Empilhadeira" and st.session_state.get("cad_placa_categoria", "Transporte") == "Transporte":
-                        st.session_state["cad_placa_categoria"] = "Empilhadeira"
+                    plate_text = clean_text(placa).upper()
+                    default_categoria = "Estoque" if "ESTOQUE" in plate_text else ("Empilhadeira" if "EMPILHADEIRA" in plate_text else "Transporte")
+                    if default_categoria in {"Empilhadeira", "Estoque"} and st.session_state.get("cad_placa_categoria", "Transporte") == "Transporte":
+                        st.session_state["cad_placa_categoria"] = default_categoria
                     categoria = st.selectbox("Categoria", CATEGORY_OPTIONS, index=CATEGORY_OPTIONS.index(default_categoria), key="cad_placa_categoria")
                 with c3:
                     diaria = st.number_input(
