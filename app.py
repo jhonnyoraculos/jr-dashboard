@@ -470,7 +470,9 @@ def _prepare_insert_row(dataset: str, row: dict) -> dict:
     if "Diaria" in prepared:
         diaria = pd.to_numeric(pd.Series([prepared["Diaria"]]), errors="coerce").iloc[0]
         prepared["Diaria"] = max(float(diaria), 0.0) if pd.notna(diaria) else 0.0
-    if prepared.get("PLACA") and _is_forklift_identifier(prepared["PLACA"]):
+    if prepared.get("PLACA") and _is_stock_identifier(prepared["PLACA"]):
+        prepared["Categoria"] = "Estoque"
+    elif prepared.get("PLACA") and _is_forklift_identifier(prepared["PLACA"]):
         prepared["Categoria"] = "Empilhadeira"
     elif prepared.get("PLACA") and _is_equipment_identifier(prepared["PLACA"]):
         prepared["Categoria"] = "Equipamento"
@@ -1614,6 +1616,13 @@ def _is_forklift_identifier(value) -> bool:
     return "EMPILHADEIRA" in text
 
 
+def _is_stock_identifier(value) -> bool:
+    if pd.isna(value):
+        return False
+    text = _normalize_ascii(value).upper().strip()
+    return "ESTOQUE" in text
+
+
 def _is_equipment_identifier(value) -> bool:
     if pd.isna(value):
         return False
@@ -1682,6 +1691,8 @@ def _normalize_category_value(value, *, default: str = "Transporte") -> str:
         return "Freteiro"
     if key in {"empilhadeira", "empilhadeiras"}:
         return "Empilhadeira"
+    if key in {"estoque", "estoques"}:
+        return "Estoque"
     if key in {"equipamento", "equipamentos"}:
         return "Equipamento"
     return "Transporte"
@@ -1706,6 +1717,9 @@ def _force_equipment_category(df: pd.DataFrame) -> None:
     mask = df["PLACA"].apply(_is_equipment_identifier)
     if mask.any():
         df.loc[mask, "Categoria"] = "Equipamento"
+    stock_mask = df["PLACA"].apply(_is_stock_identifier)
+    if stock_mask.any():
+        df.loc[stock_mask, "Categoria"] = "Estoque"
 
 
 def _normalize_tipo_value(value):
@@ -1812,15 +1826,19 @@ def _derived_plate_registry() -> pd.DataFrame:
         df.groupby("PLACA", as_index=False)["Categoria"]
         .agg(
             lambda values: (
-                "Empilhadeira"
-                if any(_normalize_category_value(value) == "Empilhadeira" for value in values)
+                "Estoque"
+                if any(_normalize_category_value(value) == "Estoque" for value in values)
                 else (
-                    "Equipamento"
-                    if any(_normalize_category_value(value) == "Equipamento" for value in values)
+                    "Empilhadeira"
+                    if any(_normalize_category_value(value) == "Empilhadeira" for value in values)
                     else (
-                        "Vex"
-                        if any(_normalize_category_value(value) == "Vex" for value in values)
-                        else ("Freteiro" if any(_normalize_category_value(value) == "Freteiro" for value in values) else "Transporte")
+                        "Equipamento"
+                        if any(_normalize_category_value(value) == "Equipamento" for value in values)
+                        else (
+                            "Vex"
+                            if any(_normalize_category_value(value) == "Vex" for value in values)
+                            else ("Freteiro" if any(_normalize_category_value(value) == "Freteiro" for value in values) else "Transporte")
+                        )
                     )
                 )
             )
