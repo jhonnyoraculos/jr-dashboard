@@ -2637,7 +2637,7 @@ def data_alertas_vex(params: dict | None = None) -> dict:
             weekend.assign(_Dia=weekend["Data"].dt.normalize())
             .groupby("PLACA", as_index=False)
             .agg(Alertas=("PLACA", "size"), Dias=("_Dia", "nunique"))
-            .sort_values(["Alertas", "Dias", "PLACA"], ascending=[False, False, True])
+            .sort_values(["Dias", "Alertas", "PLACA"], ascending=[False, False, True])
             .head(10)
             .reset_index(drop=True)
         )
@@ -2646,7 +2646,6 @@ def data_alertas_vex(params: dict | None = None) -> dict:
             {
                 "Posição": int(row.Posição),
                 "PLACA": str(row.PLACA),
-                "Alertas": int(row.Alertas),
                 "Dias": int(row.Dias),
             }
             for row in ranking.itertuples(index=False)
