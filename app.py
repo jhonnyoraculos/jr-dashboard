@@ -140,7 +140,7 @@ _PESO_COLUMNS = ["Data", "Mes", "Cidade", "Rota", "Peso", "Valor", "PLACA", "Cat
 _RODAGEM_ROTA_COLUMNS = ["Mes", "Rota", "PLACA", "Km Rodados"]
 _PLACAS_COLUMNS = ["PLACA", "Categoria", "Diaria"]
 _SALARIOS_TRANSPORTE_COLUMNS = ["Mes", "Valor"]
-_ALERTAS_VEX_COLUMNS = ["Data", "Mes", "PLACA", "Local", "Categoria"]
+_ALERTAS_VEX_COLUMNS = ["Data", "Mes", "PLACA", "Local", "IGN", "Categoria"]
 _ALERTAS_VEX_SEED_PATH = Path(__file__).resolve().parent / "data" / "alertas_vex_base.csv"
 _PLATE_ALIASES = {
     "EUX6525": "EUX6F25",
@@ -191,6 +191,7 @@ _COLUMN_SQL_TYPES = {
     "Medida": "TEXT",
     "Observacao": "TEXT",
     "Local": "TEXT",
+    "IGN": "TEXT",
 }
 
 
@@ -2593,13 +2594,17 @@ def load_alertas_vex() -> pd.DataFrame:
         df = _finalize_common(
             df,
             date_columns=["Data"],
-            text_columns=["Local"],
+            text_columns=["Local", "IGN"],
             plate_columns=["PLACA"],
             default_category="Vex",
         )
         df["Categoria"] = "Vex"
+        ign_normalized = df["IGN"].astype("string").fillna("").map(_normalize_ascii).str.lower().str.strip()
+        df["IGN"] = ign_normalized.map(
+            lambda value: "Ligado" if value in {"ligado", "on", "1", "true", "sim"} else "Desligado"
+        )
         df = df.dropna(subset=["Data", "PLACA"])
-        df = df.drop_duplicates(subset=["Data", "PLACA", "Local"], keep="last")
+        df = df.drop_duplicates(subset=["Data", "PLACA", "Local", "IGN"], keep="last")
         df = df.sort_values("Data", ascending=False).reset_index(drop=True)
         cache["mtime"] = version
         cache["df"] = df.copy()
@@ -2620,7 +2625,7 @@ def data_alertas_vex(params: dict | None = None) -> dict:
     if placa and placa != "Todos":
         df = df[df["PLACA"] == _normalize_plate_value(placa)]
 
-    weekend = df[df["Data"].dt.dayofweek.isin([5, 6])].copy()
+    weekend = df[df["Data"].dt.dayofweek.isin([5, 6]) & df["IGN"].eq("Ligado")].copy()
     day_names = {5: "Sábado", 6: "Domingo"}
 
     def public_records(source: pd.DataFrame, *, include_day: bool = False) -> list[dict]:
@@ -2635,6 +2640,7 @@ def data_alertas_vex(params: dict | None = None) -> dict:
                 "Mes": timestamp.strftime("%Y-%m"),
                 "PLACA": str(row.PLACA),
                 "Local": "" if pd.isna(row.Local) else str(row.Local),
+                "IGN": str(row.IGN),
             }
             if include_day:
                 item["Dia"] = day_names.get(timestamp.dayofweek, "")
