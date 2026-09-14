@@ -36,6 +36,7 @@ _backend_features_ready = all(
         "load_aluguel_veiculos",
         "upsert_dashboard_records",
         "append_missing_dashboard_records",
+        "load_alertas_vex",
     )
 )
 _backend_aluguel_period_ready = {"Inicio", "Fim"}.issubset(
@@ -52,7 +53,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-portugues-revisado-v1"
+APP_VERSION = "deploy-alertas-vex-v1"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -84,6 +85,7 @@ BACKUP_TABLES = [
     ("rodagem_rota", "Rodagem por rota", "rodagem_por_rota", backend.load_rodagem_rota),
     ("pedagio", "Pedágio e Extras", "pedagio_extras", backend.load_pedagio),
     ("aluguel_veiculos", "Aluguel de Veículos Vex", "aluguel_veiculos_vex", backend.load_aluguel_veiculos),
+    ("alertas_vex", "Alertas Vex", "alertas_vex", backend.load_alertas_vex),
 ]
 
 PLOTLY_CONFIG = {
@@ -123,6 +125,7 @@ ROUTES = {
     "pedagio": backend.data_pedagio,
     "vex": backend.data_vex,
     "frota": backend.data_frota,
+    "alertas": backend.data_alertas_vex,
     "overview": backend.data_overview,
     "overview_options": backend.data_overview_options,
 }
@@ -867,6 +870,26 @@ def inject_css() -> None:
           text-decoration: none !important;
           box-shadow: 0 10px 24px rgba(16,24,40,.10);
           backdrop-filter: blur(10px);
+        }}
+
+        .home-alert-link {{
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 27px;
+          padding: 0 11px;
+          border-radius: 999px;
+          background: rgba(190,30,45,.10);
+          border: 1px solid rgba(190,30,45,.24);
+          color: var(--jr-red) !important;
+          font-size: 11px;
+          font-weight: 800;
+          text-decoration: none !important;
+        }}
+
+        .st-key-alertas_shell {{
+          max-width: 1180px;
+          margin: 28px auto 48px;
         }}
 
         .st-key-cadastro_shell {{
@@ -6099,6 +6122,7 @@ def render_home() -> None:
         <header class="home-header">
           <div class="home-header-actions">
             <p class="home-last-update">&Uacute;ltima atualiza&ccedil;&atilde;o: {last_update}</p>
+            <a class="home-alert-link" href="?page=alertas" target="_self">&#9888; Alertas</a>
             <a class="home-admin-link" href="?page=cadastro" target="_self">Adicionar dados</a>
           </div>
           <div class="home-brand">
@@ -7343,6 +7367,12 @@ HOTEIS_SHEET_ALIASES = {
     "HOTEL": ["HOTELPOUSADA", "HOTEL", "POUSADA"],
 }
 
+ALERTAS_VEX_SHEET_ALIASES = {
+    "PLACA": ["PLACA", "VEICULO", "VEICULOPLACA"],
+    "DATAHORA": ["DATAEHORA", "DATAHORA", "DATA", "DATETIME"],
+    "LOCAL": ["LOCAL", "LOCALIZACAO", "CIDADE"],
+}
+
 PESO_SHEET_ALIASES = {
     "DATA": ["DATA", "DT"],
     "CIDADE": ["CIDADE"],
@@ -7711,6 +7741,65 @@ def _detect_sheet_header(raw: pd.DataFrame, aliases: dict[str, list[str]]) -> pd
     raw = raw.copy()
     raw.columns = [clean_text(value).strip() or f"Coluna {idx + 1}" for idx, value in enumerate(raw.iloc[0].tolist())]
     return raw.iloc[1:].dropna(how="all").reset_index(drop=True)
+
+
+def _alertas_vex_rows_from_sheet(
+    df: pd.DataFrame,
+    plate_map: dict[str, str],
+) -> tuple[list[dict], list[str]]:
+    header_map = {_normalize_sheet_header(column): column for column in df.columns}
+
+    def resolve(*aliases: str):
+        return next((header_map[alias] for alias in aliases if alias in header_map), None)
+
+    plate_column = resolve("PLACA", "VEICULO", "VEICULOPLACA")
+    datetime_column = resolve("DATAEHORA", "DATAHORA", "DATA", "DATETIME")
+    location_column = resolve("LOCAL", "LOCALIZACAO", "CIDADE")
+    missing = [
+        label
+        for column, label in (
+            (plate_column, "PLACA"),
+            (datetime_column, "DATA E HORA"),
+            (location_column, "LOCAL"),
+        )
+        if column is None
+    ]
+    if missing:
+        return [], [f"Colunas faltando: {', '.join(missing)}."]
+
+    rows: list[dict] = []
+    errors: list[str] = []
+    for idx, row in df.iterrows():
+        placa = clean_text(row.get(plate_column)).strip().upper()
+        raw_datetime = row.get(datetime_column)
+        local = clean_text(row.get(location_column)).strip()
+        timestamp = pd.to_datetime(raw_datetime, dayfirst=True, errors="coerce")
+        if not placa and _editor_empty_value(raw_datetime) and not local:
+            continue
+        missing_row = []
+        if not placa:
+            missing_row.append("PLACA")
+        if pd.isna(timestamp):
+            missing_row.append("DATA E HORA")
+        if not local:
+            missing_row.append("LOCAL")
+        registered_category = plate_map.get(placa)
+        if registered_category and registered_category != "Vex":
+            errors.append(f"Linha {idx + 2}: a placa {placa} não pertence à categoria Vex.")
+            continue
+        if missing_row:
+            errors.append(f"Linha {idx + 2}: preencher {', '.join(missing_row)}.")
+            continue
+        rows.append(
+            {
+                "Data": timestamp.to_pydatetime(),
+                "Mes": timestamp.strftime("%Y-%m"),
+                "PLACA": placa,
+                "Local": local,
+                "Categoria": "Vex",
+            }
+        )
+    return rows, errors
 
 
 def _pedagio_rows_from_sheet(df: pd.DataFrame, plate_map: dict[str, str]) -> tuple[list[dict], list[str]]:
@@ -10623,6 +10712,164 @@ def render_vex() -> None:
     footer("Dados Vex consolidados pelo Neon. © JR")
 
 
+def render_alertas() -> None:
+    topbar("JR DASHBOARD • Alertas Vex", back=True)
+    with st.container(key="alertas_shell"):
+        st.markdown("## Alertas de uso dos veículos Vex")
+        st.caption("São sinalizados automaticamente todos os registros de uso ocorridos aos sábados ou domingos.")
+
+        with st.expander("Importar utilização dos veículos", expanded=False):
+            st.caption("Envie uma planilha `.xlsx` ou `.csv` com as colunas PLACA, DATA E HORA e LOCAL.")
+            example = pd.DataFrame(
+                [{"PLACA": "ABC1D23", "DATA E HORA": "01/08/2026 08:30:00", "LOCAL": "JR Carmo do Cajuru"}]
+            )
+            st.download_button(
+                "Baixar planilha de exemplo",
+                data=lambda: _sheet_xlsx_bytes(example, "Alertas Vex"),
+                file_name="exemplo_alertas_vex.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="alertas_download_example",
+                width="stretch",
+            )
+            uploaded = st.file_uploader(
+                "Enviar planilha",
+                type=["xlsx", "csv"],
+                key="alertas_vex_upload",
+            )
+            if uploaded is not None:
+                try:
+                    raw_df = _read_uploaded_sheet(uploaded, ALERTAS_VEX_SHEET_ALIASES)
+                    rows, errors = _alertas_vex_rows_from_sheet(raw_df, _registered_plate_map())
+                except Exception as exc:
+                    st.error("Não foi possível ler a planilha.")
+                    st.exception(exc)
+                else:
+                    if errors:
+                        st.warning("Revise a planilha antes de importar.")
+                        for error in errors[:12]:
+                            st.write(error)
+                        if len(errors) > 12:
+                            st.write(f"...mais {len(errors) - 12} erro(s).")
+                    elif not rows:
+                        st.warning("Nenhuma utilização válida foi encontrada.")
+                    else:
+                        preview = pd.DataFrame(rows)
+                        weekend_count = int(pd.to_datetime(preview["Data"], errors="coerce").dt.dayofweek.isin([5, 6]).sum())
+                        st.dataframe(
+                            preview[["PLACA", "Data", "Local"]].rename(columns={"PLACA": "Placa"}),
+                            width="stretch",
+                            hide_index=True,
+                            height=260,
+                        )
+                        st.info(f"{len(rows)} utilização(ões) encontrada(s), sendo {weekend_count} no fim de semana.")
+                        if st.button(
+                            f"Importar {len(rows)} utilização(ões)",
+                            type="primary",
+                            width="stretch",
+                            key="alertas_vex_import_confirm",
+                        ):
+                            existing = backend.load_alertas_vex()
+                            existing_keys = {
+                                (
+                                    pd.to_datetime(row.Data, errors="coerce"),
+                                    clean_text(row.PLACA).strip().upper(),
+                                    clean_text(row.Local).strip(),
+                                )
+                                for row in existing.itertuples(index=False)
+                            }
+                            new_rows = [
+                                row
+                                for row in rows
+                                if (
+                                    pd.to_datetime(row["Data"], errors="coerce"),
+                                    clean_text(row["PLACA"]).strip().upper(),
+                                    clean_text(row["Local"]).strip(),
+                                )
+                                not in existing_keys
+                            ]
+                            if new_rows:
+                                try:
+                                    imported, skipped = backend.append_missing_dashboard_records(
+                                        "alertas_vex",
+                                        new_rows,
+                                        update_plate_registry=False,
+                                    )
+                                except Exception as exc:
+                                    st.error("Não foi possível salvar os dados de alerta no Neon.")
+                                    st.exception(exc)
+                                    return
+                                clear_cached_reads()
+                                st.success(f"{len(imported)} utilização(ões) importada(s); {skipped} já existente(s).")
+                            else:
+                                st.info("Todos os registros dessa planilha já estão cadastrados.")
+                            st.rerun()
+
+        seed = route_json("alertas")
+        filter_cols = st.columns([0.8, 1.1, 1.4, 1.0])
+        year_options = ["Todos", *(seed.get("anos", []) or [])]
+        plate_options = ["Todos", *(seed.get("placas", []) or [])]
+        with filter_cols[0]:
+            ano = st.selectbox("Ano", year_options, key="alertas_ano")
+        month_options = ["Todos"]
+        if ano != "Todos":
+            month_options.extend([f"{int(ano)}-{month:02d}" for month in range(1, 13)])
+        with filter_cols[1]:
+            mes = st.selectbox("Mês", month_options, format_func=month_filter_label, key="alertas_mes")
+        with filter_cols[2]:
+            placa = st.selectbox("Placa Vex", plate_options, key="alertas_placa")
+        with filter_cols[3]:
+            st.write("")
+            st.write("")
+            if st.button("Limpar filtros", key="alertas_clear", width="stretch"):
+                for key in ("alertas_ano", "alertas_mes", "alertas_placa"):
+                    st.session_state.pop(key, None)
+                st.rerun()
+
+        params: dict[str, object] = {}
+        if ano != "Todos":
+            params["ano"] = ano
+        if mes != "Todos":
+            params["mes"] = [mes]
+        if placa != "Todos":
+            params["placa"] = placa
+        data = route_json("alertas", params)
+
+        render_kpis(
+            [
+                ("Alertas no fim de semana", fmt_num(data.get("alertas_total")), JR_RED),
+                ("Veículos com alerta", fmt_num(data.get("placas_alerta")), JR_RED),
+                ("Dias com alerta", fmt_num(data.get("dias_alerta")), "#D97706"),
+                ("Utilizações analisadas", fmt_num(data.get("registros_total")), JR_BLUE),
+            ]
+        )
+
+        alerts = pd.DataFrame(data.get("alertas") or [])
+        st.markdown("### Ocorrências de sábado e domingo")
+        if alerts.empty:
+            st.success("Nenhum uso de veículo Vex no fim de semana para os filtros selecionados.")
+        else:
+            st.warning(f"Foram encontradas {len(alerts)} ocorrência(s) no fim de semana.")
+            st.dataframe(
+                alerts[["Dia", "Data", "PLACA", "Local"]].rename(columns={"PLACA": "Placa"}),
+                width="stretch",
+                hide_index=True,
+                height=min(500, 72 + len(alerts) * 35),
+            )
+
+        with st.expander(f"Todas as utilizações ({data.get('registros_total', 0)})", expanded=False):
+            records = pd.DataFrame(data.get("registros") or [])
+            if records.empty:
+                st.info("Nenhuma utilização cadastrada para os filtros selecionados.")
+            else:
+                st.dataframe(
+                    records[["Data", "PLACA", "Local"]].rename(columns={"PLACA": "Placa"}),
+                    width="stretch",
+                    hide_index=True,
+                    height=460,
+                )
+    footer("Alertas gerados automaticamente a partir das utilizações dos veículos Vex. © JR")
+
+
 def footer(text: str) -> None:
     st.markdown(f'<div class="footer-note">{h(text)}</div>', unsafe_allow_html=True)
 
@@ -10642,6 +10889,8 @@ def main() -> None:
             render_pedagio()
         elif page == "vex":
             render_vex()
+        elif page == "alertas":
+            render_alertas()
         elif page in {"frota", "ranking"}:
             render_frota()
         elif page in {"cadastro", "dados"}:
