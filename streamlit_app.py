@@ -53,7 +53,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-alertas-importacao-filtrada-v3"
+APP_VERSION = "deploy-alertas-limpar-upload-v4"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -10751,10 +10751,12 @@ def render_alertas() -> None:
                 key="alertas_download_example",
                 width="stretch",
             )
+            upload_nonce_key = "alertas_vex_upload_nonce"
+            st.session_state.setdefault(upload_nonce_key, 0)
             uploaded = st.file_uploader(
                 "Enviar planilha",
                 type=["xlsx", "csv"],
-                key="alertas_vex_upload",
+                key=f"alertas_vex_upload_{st.session_state[upload_nonce_key]}",
             )
             if uploaded is not None:
                 try:
@@ -10838,6 +10840,9 @@ def render_alertas() -> None:
                                 st.success(f"{len(imported)} alerta(s) importado(s); {skipped} já existente(s).")
                             else:
                                 st.info("Todos os registros dessa planilha já estão cadastrados.")
+                            # Usa uma nova chave no próximo ciclo para limpar o
+                            # arquivo já processado do campo de upload.
+                            st.session_state[upload_nonce_key] += 1
                             st.rerun()
 
         seed = route_json("alertas")
