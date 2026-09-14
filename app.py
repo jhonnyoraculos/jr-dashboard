@@ -2631,6 +2631,26 @@ def data_alertas_vex(params: dict | None = None) -> dict:
 
     weekend = df.copy()
     day_names = {5: "Sábado", 6: "Domingo"}
+    ranking_placas: list[dict] = []
+    if not weekend.empty:
+        ranking = (
+            weekend.assign(_Dia=weekend["Data"].dt.normalize())
+            .groupby("PLACA", as_index=False)
+            .agg(Alertas=("PLACA", "size"), Dias=("_Dia", "nunique"))
+            .sort_values(["Alertas", "Dias", "PLACA"], ascending=[False, False, True])
+            .head(10)
+            .reset_index(drop=True)
+        )
+        ranking.insert(0, "Posição", range(1, len(ranking) + 1))
+        ranking_placas = [
+            {
+                "Posição": int(row.Posição),
+                "PLACA": str(row.PLACA),
+                "Alertas": int(row.Alertas),
+                "Dias": int(row.Dias),
+            }
+            for row in ranking.itertuples(index=False)
+        ]
 
     def public_records(source: pd.DataFrame, *, include_day: bool = False) -> list[dict]:
         records: list[dict] = []
@@ -2658,6 +2678,7 @@ def data_alertas_vex(params: dict | None = None) -> dict:
         "placas_alerta": int(weekend["PLACA"].nunique()) if not weekend.empty else 0,
         "dias_alerta": int(weekend["Data"].dt.normalize().nunique()) if not weekend.empty else 0,
         "registros_total": int(df.shape[0]),
+        "ranking_placas": ranking_placas,
         "anos": sorted({int(value) for value in all_rows["Data"].dt.year.dropna().unique()}, reverse=True),
         "placas": _unique_sorted(all_rows, "PLACA"),
     }

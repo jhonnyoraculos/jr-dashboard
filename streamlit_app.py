@@ -53,7 +53,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-alertas-sem-total-v5"
+APP_VERSION = "deploy-alertas-ranking-placas-v6"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -10882,6 +10882,18 @@ def render_alertas() -> None:
                 ("Alertas cadastrados", fmt_num(data.get("registros_total")), JR_BLUE),
             ]
         )
+
+        ranking = pd.DataFrame(data.get("ranking_placas") or [])
+        st.markdown("### Veículos com mais alertas")
+        if ranking.empty:
+            st.info("Nenhum veículo com alerta para os filtros selecionados.")
+        else:
+            st.dataframe(
+                ranking.rename(columns={"PLACA": "Placa", "Dias": "Dias com alerta"}),
+                width="stretch",
+                hide_index=True,
+                height=min(422, 72 + len(ranking) * 35),
+            )
 
         alerts = pd.DataFrame(data.get("alertas") or [])
         st.markdown("### Ocorrências de sábado e domingo")
