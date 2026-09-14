@@ -53,7 +53,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-alertas-sob-demanda-v8"
+APP_VERSION = "deploy-vex-custo-total-km-v9"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -5038,7 +5038,7 @@ def compare_kpi_cards(bundle: list[tuple[str, dict]]) -> list[tuple]:
                 ("combustivel", "Combustível Vex (R$)", fmt_brl(data.get("combustivel_total"))),
                 ("km_total", "KM total", fmt_num(data.get("km_total"))),
                 ("litros_total", "Total litros", fmt_num(data.get("litros_total"))),
-                ("custo_km", "Custo médio por KM", fmt_brl(data.get("custo_por_km"))),
+                ("custo_km", "Custo por KM", fmt_brl(data.get("custo_por_km"))),
                 ("media_kml", "Média KM/L", fmt_num(data.get("km_por_litro"), 2)),
                 ("custo_litro", "Custo médio por litro", fmt_brl(data.get("custo_por_litro"))),
                 ("manutencao", "Manutenção Vex (R$)", fmt_brl(data.get("manutencao_total"))),
@@ -10661,7 +10661,7 @@ def render_vex() -> None:
         ("combustivel_vex", "Combustível Vex (R$)", fmt_brl(data.get("combustivel_total"))),
         ("km_total", "KM total", fmt_num(data.get("km_total"))),
         ("litros_total", "Total litros", fmt_num(data.get("litros_total"))),
-        ("custo_km", "Custo médio por KM", fmt_brl(data.get("custo_por_km"))),
+        ("custo_km", "Custo por KM", fmt_brl(data.get("custo_por_km"))),
         ("media_kml", "Média KM/L", fmt_num(data.get("km_por_litro"), 2)),
         ("custo_litro", "Custo médio por litro", fmt_brl(data.get("custo_por_litro"))),
         ("manutencao_vex", "Manutenção Vex (R$)", fmt_brl(data.get("manutencao_total"))),
