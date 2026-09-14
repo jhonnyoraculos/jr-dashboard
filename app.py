@@ -4541,7 +4541,7 @@ def _warm_data_caches(*, blocking: bool = False) -> None:
         (load_manutencao, "manutenção"),
         (load_pneus, "pneus"),
         (load_hoteis, "hotéis"),
-        (load_alertas_vex, "alertas Vex"),
+        # Alertas Vex é carregado somente ao abrir a página de Alertas.
         (load_pedagio, "pedágio/seguro/IPVA"),
         (load_aluguel_veiculos, "aluguel de veículos Vex"),
         (load_peso, "peso"),
