@@ -2604,6 +2604,10 @@ def load_alertas_vex() -> pd.DataFrame:
             lambda value: "Ligado" if value in {"ligado", "on", "1", "true", "sim"} else "Desligado"
         )
         df = df.dropna(subset=["Data", "PLACA"])
+        # O cadastro de alertas guarda somente ocorrências reais: veículo com
+        # ignição ligada aos sábados ou domingos. Registros antigos que foram
+        # importados apenas para conferência também deixam de aparecer.
+        df = df[df["Data"].dt.dayofweek.isin([5, 6]) & df["IGN"].eq("Ligado")].copy()
         df = df.drop_duplicates(subset=["Data", "PLACA", "Local", "IGN"], keep="last")
         df = df.sort_values("Data", ascending=False).reset_index(drop=True)
         cache["mtime"] = version
@@ -2625,7 +2629,7 @@ def data_alertas_vex(params: dict | None = None) -> dict:
     if placa and placa != "Todos":
         df = df[df["PLACA"] == _normalize_plate_value(placa)]
 
-    weekend = df[df["Data"].dt.dayofweek.isin([5, 6]) & df["IGN"].eq("Ligado")].copy()
+    weekend = df.copy()
     day_names = {5: "Sábado", 6: "Domingo"}
 
     def public_records(source: pd.DataFrame, *, include_day: bool = False) -> list[dict]:

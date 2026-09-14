@@ -53,7 +53,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-alertas-vex-ign-v2"
+APP_VERSION = "deploy-alertas-importacao-filtrada-v3"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -7809,6 +7809,16 @@ def _alertas_vex_rows_from_sheet(
     return rows, errors
 
 
+def _alertas_vex_only_alert_rows(rows: list[dict]) -> list[dict]:
+    active_values = {"LIGADO", "ON", "1", "TRUE", "SIM"}
+    return [
+        row
+        for row in rows
+        if pd.to_datetime(row.get("Data"), errors="coerce").dayofweek in (5, 6)
+        and _normalize_sheet_header(row.get("IGN")) in active_values
+    ]
+
+
 def _pedagio_rows_from_sheet(df: pd.DataFrame, plate_map: dict[str, str]) -> tuple[list[dict], list[str]]:
     header_map = {_normalize_sheet_header(column): column for column in df.columns}
     aliases = {
@@ -10725,8 +10735,11 @@ def render_alertas() -> None:
         st.markdown("## Alertas de uso dos veículos Vex")
         st.caption("São sinalizados automaticamente os registros com IGN ligado ocorridos aos sábados ou domingos.")
 
-        with st.expander("Importar utilização dos veículos", expanded=False):
-            st.caption("Envie uma planilha `.xlsx` ou `.csv` com as colunas PLACA, DATA E HORA, LOCAL e IGN.")
+        with st.expander("Importar alertas de utilização", expanded=False):
+            st.caption(
+                "Envie uma planilha `.xlsx` ou `.csv` com as colunas PLACA, DATA E HORA, LOCAL e IGN. "
+                "Somente usos com IGN ligado aos sábados ou domingos serão importados."
+            )
             example = pd.DataFrame(
                 [{"PLACA": "ABC1D23", "DATA E HORA": "01/08/2026 08:30:00", "LOCAL": "JR Carmo do Cajuru", "IGN": "ligado"}]
             )
@@ -10760,18 +10773,31 @@ def render_alertas() -> None:
                     elif not rows:
                         st.warning("Nenhuma utilização válida foi encontrada.")
                     else:
-                        preview = pd.DataFrame(rows)
-                        ign_ligado = preview["IGN"].astype("string").str.strip().str.lower().eq("ligado")
-                        weekend_count = int((pd.to_datetime(preview["Data"], errors="coerce").dt.dayofweek.isin([5, 6]) & ign_ligado).sum())
-                        st.dataframe(
-                            preview[["PLACA", "Data", "Local", "IGN"]].rename(columns={"PLACA": "Placa"}),
-                            width="stretch",
-                            hide_index=True,
-                            height=260,
-                        )
-                        st.info(f"{len(rows)} utilização(ões) encontrada(s), sendo {weekend_count} no fim de semana.")
-                        if st.button(
-                            f"Importar {len(rows)} utilização(ões)",
+                        alert_rows = _alertas_vex_only_alert_rows(rows)
+                        if not alert_rows:
+                            st.success(
+                                "A planilha foi conferida e não possui uso com IGN ligado aos sábados ou domingos. "
+                                "Nenhum registro será importado."
+                            )
+                        else:
+                            preview = pd.DataFrame(alert_rows)
+                            preview.insert(
+                                0,
+                                "Dia",
+                                pd.to_datetime(preview["Data"], errors="coerce").dt.dayofweek.map({5: "Sábado", 6: "Domingo"}),
+                            )
+                            st.dataframe(
+                                preview[["Dia", "PLACA", "Data", "Local", "IGN"]].rename(columns={"PLACA": "Placa"}),
+                                width="stretch",
+                                hide_index=True,
+                                height=260,
+                            )
+                            st.warning(
+                                f"{len(alert_rows)} alerta(s) encontrado(s). "
+                                f"As outras {len(rows) - len(alert_rows)} linha(s) não serão importadas."
+                            )
+                        if alert_rows and st.button(
+                            f"Importar {len(alert_rows)} alerta(s)",
                             type="primary",
                             width="stretch",
                             key="alertas_vex_import_confirm",
@@ -10788,7 +10814,7 @@ def render_alertas() -> None:
                             }
                             new_rows = [
                                 row
-                                for row in rows
+                                for row in alert_rows
                                 if (
                                     pd.to_datetime(row["Data"], errors="coerce"),
                                     clean_text(row["PLACA"]).strip().upper(),
@@ -10809,7 +10835,7 @@ def render_alertas() -> None:
                                     st.exception(exc)
                                     return
                                 clear_cached_reads()
-                                st.success(f"{len(imported)} utilização(ões) importada(s); {skipped} já existente(s).")
+                                st.success(f"{len(imported)} alerta(s) importado(s); {skipped} já existente(s).")
                             else:
                                 st.info("Todos os registros dessa planilha já estão cadastrados.")
                             st.rerun()
@@ -10849,7 +10875,7 @@ def render_alertas() -> None:
                 ("Alertas no fim de semana", fmt_num(data.get("alertas_total")), JR_RED),
                 ("Veículos com alerta", fmt_num(data.get("placas_alerta")), JR_RED),
                 ("Dias com alerta", fmt_num(data.get("dias_alerta")), "#D97706"),
-                ("Utilizações analisadas", fmt_num(data.get("registros_total")), JR_BLUE),
+                ("Alertas cadastrados", fmt_num(data.get("registros_total")), JR_BLUE),
             ]
         )
 
@@ -10866,10 +10892,10 @@ def render_alertas() -> None:
                 height=min(500, 72 + len(alerts) * 35),
             )
 
-        with st.expander(f"Todas as utilizações ({data.get('registros_total', 0)})", expanded=False):
+        with st.expander(f"Todas as ocorrências importadas ({data.get('registros_total', 0)})", expanded=False):
             records = pd.DataFrame(data.get("registros") or [])
             if records.empty:
-                st.info("Nenhuma utilização cadastrada para os filtros selecionados.")
+                st.info("Nenhuma ocorrência de alerta cadastrada para os filtros selecionados.")
             else:
                 st.dataframe(
                     records[["Data", "PLACA", "Local", "IGN"]].rename(columns={"PLACA": "Placa"}),
