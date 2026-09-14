@@ -3304,7 +3304,7 @@ def data_vex(params: dict | None = None) -> dict:
         "km_total": round(km_total, 2),
         "litros_total": round(litros_total, 2),
         "km_por_litro": round((km_total / litros_total) if litros_total else 0.0, 3),
-        "custo_por_km": round((total_comb / km_total) if km_total else 0.0, 4),
+        "custo_por_km": round((total_vex / km_total) if km_total else 0.0, 4),
         "custo_por_litro": round((total_comb / litros_total) if litros_total else 0.0, 4),
         "mensal_total": {"Mes": meses_sorted, "Valor": [round(monthly_map[mes], 2) for mes in meses_sorted]},
         "km_mensal": km_mensal,
