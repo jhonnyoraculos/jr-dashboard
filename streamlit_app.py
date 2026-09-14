@@ -53,7 +53,7 @@ MUTED = "#6B7280"
 CARD_BORDER = "#c2d2f3"
 LOGO_PATH = Path(__file__).parent / "static" / "logo-jr.png"
 CURRENT_YEAR = date.today().year
-APP_VERSION = "deploy-alertas-vex-v1"
+APP_VERSION = "deploy-alertas-vex-ign-v2"
 RANK_ROUTES_ENABLED = False
 ROUTE_CACHE_TTL_SECONDS = max(int(os.environ.get("JR_ROUTE_CACHE_TTL_SECONDS", "180") or 180), 30)
 DATA_EDITOR_PAGE_SIZE = 100
@@ -7371,6 +7371,7 @@ ALERTAS_VEX_SHEET_ALIASES = {
     "PLACA": ["PLACA", "VEICULO", "VEICULOPLACA"],
     "DATAHORA": ["DATAEHORA", "DATAHORA", "DATA", "DATETIME"],
     "LOCAL": ["LOCAL", "LOCALIZACAO", "CIDADE"],
+    "IGN": ["IGN", "IGNICAO", "STATUSIGN", "STATUSIGNICAO"],
 }
 
 PESO_SHEET_ALIASES = {
@@ -7755,12 +7756,14 @@ def _alertas_vex_rows_from_sheet(
     plate_column = resolve("PLACA", "VEICULO", "VEICULOPLACA")
     datetime_column = resolve("DATAEHORA", "DATAHORA", "DATA", "DATETIME")
     location_column = resolve("LOCAL", "LOCALIZACAO", "CIDADE")
+    ign_column = resolve("IGN", "IGNICAO", "STATUSIGN", "STATUSIGNICAO")
     missing = [
         label
         for column, label in (
             (plate_column, "PLACA"),
             (datetime_column, "DATA E HORA"),
             (location_column, "LOCAL"),
+            (ign_column, "IGN"),
         )
         if column is None
     ]
@@ -7773,8 +7776,9 @@ def _alertas_vex_rows_from_sheet(
         placa = clean_text(row.get(plate_column)).strip().upper()
         raw_datetime = row.get(datetime_column)
         local = clean_text(row.get(location_column)).strip()
+        ign = clean_text(row.get(ign_column)).strip()
         timestamp = pd.to_datetime(raw_datetime, dayfirst=True, errors="coerce")
-        if not placa and _editor_empty_value(raw_datetime) and not local:
+        if not placa and _editor_empty_value(raw_datetime) and not local and not ign:
             continue
         missing_row = []
         if not placa:
@@ -7783,6 +7787,8 @@ def _alertas_vex_rows_from_sheet(
             missing_row.append("DATA E HORA")
         if not local:
             missing_row.append("LOCAL")
+        if not ign:
+            missing_row.append("IGN")
         registered_category = plate_map.get(placa)
         if registered_category and registered_category != "Vex":
             errors.append(f"Linha {idx + 2}: a placa {placa} não pertence à categoria Vex.")
@@ -7796,6 +7802,7 @@ def _alertas_vex_rows_from_sheet(
                 "Mes": timestamp.strftime("%Y-%m"),
                 "PLACA": placa,
                 "Local": local,
+                "IGN": ign,
                 "Categoria": "Vex",
             }
         )
@@ -10716,12 +10723,12 @@ def render_alertas() -> None:
     topbar("JR DASHBOARD • Alertas Vex", back=True)
     with st.container(key="alertas_shell"):
         st.markdown("## Alertas de uso dos veículos Vex")
-        st.caption("São sinalizados automaticamente todos os registros de uso ocorridos aos sábados ou domingos.")
+        st.caption("São sinalizados automaticamente os registros com IGN ligado ocorridos aos sábados ou domingos.")
 
         with st.expander("Importar utilização dos veículos", expanded=False):
-            st.caption("Envie uma planilha `.xlsx` ou `.csv` com as colunas PLACA, DATA E HORA e LOCAL.")
+            st.caption("Envie uma planilha `.xlsx` ou `.csv` com as colunas PLACA, DATA E HORA, LOCAL e IGN.")
             example = pd.DataFrame(
-                [{"PLACA": "ABC1D23", "DATA E HORA": "01/08/2026 08:30:00", "LOCAL": "JR Carmo do Cajuru"}]
+                [{"PLACA": "ABC1D23", "DATA E HORA": "01/08/2026 08:30:00", "LOCAL": "JR Carmo do Cajuru", "IGN": "ligado"}]
             )
             st.download_button(
                 "Baixar planilha de exemplo",
@@ -10754,9 +10761,10 @@ def render_alertas() -> None:
                         st.warning("Nenhuma utilização válida foi encontrada.")
                     else:
                         preview = pd.DataFrame(rows)
-                        weekend_count = int(pd.to_datetime(preview["Data"], errors="coerce").dt.dayofweek.isin([5, 6]).sum())
+                        ign_ligado = preview["IGN"].astype("string").str.strip().str.lower().eq("ligado")
+                        weekend_count = int((pd.to_datetime(preview["Data"], errors="coerce").dt.dayofweek.isin([5, 6]) & ign_ligado).sum())
                         st.dataframe(
-                            preview[["PLACA", "Data", "Local"]].rename(columns={"PLACA": "Placa"}),
+                            preview[["PLACA", "Data", "Local", "IGN"]].rename(columns={"PLACA": "Placa"}),
                             width="stretch",
                             hide_index=True,
                             height=260,
@@ -10774,6 +10782,7 @@ def render_alertas() -> None:
                                     pd.to_datetime(row.Data, errors="coerce"),
                                     clean_text(row.PLACA).strip().upper(),
                                     clean_text(row.Local).strip(),
+                                    clean_text(row.IGN).strip().lower(),
                                 )
                                 for row in existing.itertuples(index=False)
                             }
@@ -10784,6 +10793,7 @@ def render_alertas() -> None:
                                     pd.to_datetime(row["Data"], errors="coerce"),
                                     clean_text(row["PLACA"]).strip().upper(),
                                     clean_text(row["Local"]).strip(),
+                                    clean_text(row["IGN"]).strip().lower(),
                                 )
                                 not in existing_keys
                             ]
@@ -10850,7 +10860,7 @@ def render_alertas() -> None:
         else:
             st.warning(f"Foram encontradas {len(alerts)} ocorrência(s) no fim de semana.")
             st.dataframe(
-                alerts[["Dia", "Data", "PLACA", "Local"]].rename(columns={"PLACA": "Placa"}),
+                alerts[["Dia", "Data", "PLACA", "Local", "IGN"]].rename(columns={"PLACA": "Placa"}),
                 width="stretch",
                 hide_index=True,
                 height=min(500, 72 + len(alerts) * 35),
@@ -10862,7 +10872,7 @@ def render_alertas() -> None:
                 st.info("Nenhuma utilização cadastrada para os filtros selecionados.")
             else:
                 st.dataframe(
-                    records[["Data", "PLACA", "Local"]].rename(columns={"PLACA": "Placa"}),
+                    records[["Data", "PLACA", "Local", "IGN"]].rename(columns={"PLACA": "Placa"}),
                     width="stretch",
                     hide_index=True,
                     height=460,
