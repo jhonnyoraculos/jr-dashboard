@@ -9,6 +9,7 @@ import time
 import unicodedata
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 
@@ -50,6 +51,7 @@ DB_TABLES = {
     "rodagem_rota": "dashboard_rodagem_rota",
     "placas": "dashboard_placas",
     "salarios_transporte": "dashboard_salarios_transporte",
+    "alertas_vex": "dashboard_alertas_vex",
 }
 DB_METADATA_TABLE = "dashboard_metadata"
 BACKEND_BUILD_VERSION = "aluguel-multiplicar-meses-v1"
@@ -72,6 +74,7 @@ _OVERVIEW_CACHE = {"mtimes": None, "dados": None}
 _PLATE_REGISTRY_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
 _PLACAS_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
 _SALARIOS_TRANSPORTE_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
+_ALERTAS_VEX_CACHE = {"mtime": None, "df": None, "lock": threading.Lock()}
 _TEXT_REGISTRY_CACHES = {
     "combustiveis": {"mtime": None, "df": None, "lock": threading.Lock()},
     "postos": {"mtime": None, "df": None, "lock": threading.Lock()},
@@ -89,6 +92,7 @@ _CACHE_MAP = {
     "rodagem_rota": _RODAGEM_ROTA_CACHE,
     "placas": _PLACAS_CACHE,
     "salarios_transporte": _SALARIOS_TRANSPORTE_CACHE,
+    "alertas_vex": _ALERTAS_VEX_CACHE,
 }
 
 _COMBUSTIVEL_COLUMNS = [
@@ -136,6 +140,8 @@ _PESO_COLUMNS = ["Data", "Mes", "Cidade", "Rota", "Peso", "Valor", "PLACA", "Cat
 _RODAGEM_ROTA_COLUMNS = ["Mes", "Rota", "PLACA", "Km Rodados"]
 _PLACAS_COLUMNS = ["PLACA", "Categoria", "Diaria"]
 _SALARIOS_TRANSPORTE_COLUMNS = ["Mes", "Valor"]
+_ALERTAS_VEX_COLUMNS = ["Data", "Mes", "PLACA", "Local", "Categoria"]
+_ALERTAS_VEX_SEED_PATH = Path(__file__).resolve().parent / "data" / "alertas_vex_base.csv"
 _PLATE_ALIASES = {
     "EUX6525": "EUX6F25",
 }
@@ -154,6 +160,7 @@ _DATASET_COLUMNS = {
     "rodagem_rota": _RODAGEM_ROTA_COLUMNS,
     "placas": _PLACAS_COLUMNS,
     "salarios_transporte": _SALARIOS_TRANSPORTE_COLUMNS,
+    "alertas_vex": _ALERTAS_VEX_COLUMNS,
 }
 _COLUMN_SQL_TYPES = {
     "Data": "TIMESTAMP",
@@ -183,6 +190,7 @@ _COLUMN_SQL_TYPES = {
     "Quantidade": "DOUBLE PRECISION",
     "Medida": "TEXT",
     "Observacao": "TEXT",
+    "Local": "TEXT",
 }
 
 
@@ -2553,6 +2561,98 @@ def load_hoteis() -> pd.DataFrame:
         return df.copy()
 
 
+def _load_alertas_vex_seed() -> pd.DataFrame:
+    if not _ALERTAS_VEX_SEED_PATH.exists():
+        return _empty(_ALERTAS_VEX_COLUMNS)
+    try:
+        seed = pd.read_csv(_ALERTAS_VEX_SEED_PATH, sep=";", encoding="utf-8")
+    except Exception:
+        return _empty(_ALERTAS_VEX_COLUMNS)
+    for column in _ALERTAS_VEX_COLUMNS:
+        if column not in seed.columns:
+            seed[column] = pd.NA
+    return seed[_ALERTAS_VEX_COLUMNS].copy()
+
+
+def load_alertas_vex() -> pd.DataFrame:
+    cache = _ALERTAS_VEX_CACHE
+    seed_version = _ALERTAS_VEX_SEED_PATH.stat().st_mtime_ns if _ALERTAS_VEX_SEED_PATH.exists() else 0
+    version = (_db_version("alertas_vex"), seed_version)
+    with cache["lock"]:
+        cached = cache.get("df")
+        if cached is not None and cache.get("mtime") == version:
+            return cached.copy()
+
+        try:
+            database_rows = _read_database_table("alertas_vex", _ALERTAS_VEX_COLUMNS, date_columns=["Data"])
+        except Exception:
+            database_rows = _empty(_ALERTAS_VEX_COLUMNS)
+        seed_rows = _load_alertas_vex_seed()
+        frames = [frame for frame in (seed_rows, database_rows) if not frame.empty]
+        df = pd.concat(frames, ignore_index=True) if frames else _empty(_ALERTAS_VEX_COLUMNS)
+        df = _finalize_common(
+            df,
+            date_columns=["Data"],
+            text_columns=["Local"],
+            plate_columns=["PLACA"],
+            default_category="Vex",
+        )
+        df["Categoria"] = "Vex"
+        df = df.dropna(subset=["Data", "PLACA"])
+        df = df.drop_duplicates(subset=["Data", "PLACA", "Local"], keep="last")
+        df = df.sort_values("Data", ascending=False).reset_index(drop=True)
+        cache["mtime"] = version
+        cache["df"] = df.copy()
+        return df.copy()
+
+
+def data_alertas_vex(params: dict | None = None) -> dict:
+    params = params or {}
+    all_rows = load_alertas_vex()
+    df = all_rows.copy()
+    ano = _parse_int(_param(params, "ano"))
+    meses = _parse_mes_list(params.get("mes"))
+    placa = _param(params, "placa")
+    if ano is not None:
+        df = df[df["Data"].dt.year == ano]
+    if meses:
+        df = df[df["Mes"].isin(meses)]
+    if placa and placa != "Todos":
+        df = df[df["PLACA"] == _normalize_plate_value(placa)]
+
+    weekend = df[df["Data"].dt.dayofweek.isin([5, 6])].copy()
+    day_names = {5: "Sábado", 6: "Domingo"}
+
+    def public_records(source: pd.DataFrame, *, include_day: bool = False) -> list[dict]:
+        records: list[dict] = []
+        for row in source.itertuples(index=False):
+            timestamp = pd.to_datetime(row.Data, errors="coerce")
+            if pd.isna(timestamp):
+                continue
+            item = {
+                "Data": timestamp.strftime("%d/%m/%Y %H:%M:%S"),
+                "DataISO": timestamp.isoformat(),
+                "Mes": timestamp.strftime("%Y-%m"),
+                "PLACA": str(row.PLACA),
+                "Local": "" if pd.isna(row.Local) else str(row.Local),
+            }
+            if include_day:
+                item["Dia"] = day_names.get(timestamp.dayofweek, "")
+            records.append(item)
+        return records
+
+    return {
+        "alertas": public_records(weekend, include_day=True),
+        "registros": public_records(df),
+        "alertas_total": int(weekend.shape[0]),
+        "placas_alerta": int(weekend["PLACA"].nunique()) if not weekend.empty else 0,
+        "dias_alerta": int(weekend["Data"].dt.normalize().nunique()) if not weekend.empty else 0,
+        "registros_total": int(df.shape[0]),
+        "anos": sorted({int(value) for value in all_rows["Data"].dt.year.dropna().unique()}, reverse=True),
+        "placas": _unique_sorted(all_rows, "PLACA"),
+    }
+
+
 def agg_hoteis(df: pd.DataFrame) -> dict:
     reservas = df[df["Data"].notna()].copy() if "Data" in df.columns else df.copy()
     if "Data" in reservas.columns:
@@ -4411,6 +4511,7 @@ def _warm_data_caches(*, blocking: bool = False) -> None:
         (load_manutencao, "manutenção"),
         (load_pneus, "pneus"),
         (load_hoteis, "hotéis"),
+        (load_alertas_vex, "alertas Vex"),
         (load_pedagio, "pedágio/seguro/IPVA"),
         (load_aluguel_veiculos, "aluguel de veículos Vex"),
         (load_peso, "peso"),
